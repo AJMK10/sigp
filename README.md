@@ -1,1 +1,91 @@
-# sigp
+# SIGP · Système Intégré de Gestion du Patrimoine (lot 1)
+
+Application web de gestion du patrimoine pour les entreprises et les administrations publiques :
+entrée en patrimoine, immatriculation, mouvements, inventaire physique, amortissements, écritures comptables,
+réformes et sorties, comptabilité-matières, tableau de bord et journal d'audit inaltérable.
+Conforme au cahier des charges SIGP et à la maquette validée (charte SIGP, IBM Plex).
+
+## Démarrage rapide (Docker)
+
+```bash
+docker compose up --build
+```
+
+Ouvrez http://localhost:8080. Un jeu de démonstration est chargé au premier démarrage (`SEED_DEMO=1`).
+Pour un environnement réel, lancez avec `SEED_DEMO=0` et un `JWT_SECRET` fort.
+
+### Comptes de démonstration (mot de passe `Sigp2026!`)
+
+| Compte | Profil | À essayer |
+|---|---|---|
+| konan.a@sigp.ci | Directeur du patrimoine | Tableau de bord, validation du transfert en attente, commission de réforme |
+| yao.k@sigp.ci | Gestionnaire du patrimoine | Réceptions, étiquettes, nouveau mouvement, dossier de réforme |
+| kone.d@sigp.ci | Comptable-matières | Visa de la réception des climatiseurs, décisions sur les écarts d'inventaire |
+| coulibaly.n@sigp.ci | Direction financière | Dotations d'octobre (simulation puis définitif), écritures, clôture de période |
+| diallo.f@sigp.ci | Contrôleur financier | Avis du contrôle financier, journal d'audit |
+| bamba.s@sigp.ci | Chef d'équipe d'inventaire | Comptage à l'aveugle d'une zone |
+| traore.m@sigp.ci | Détenteur | Portail : mes biens, demandes, attestation de détention |
+| admin@sigp.ci | Administrateur | Paramétrage, utilisateurs et droits |
+
+## Développement local
+
+Prérequis : Node.js 22, PostgreSQL 16.
+
+```bash
+npm install
+cp apps/api/.env.example apps/api/.env      # ajustez DATABASE_URL
+npm run db:migrate                           # applique les migrations SQL
+SEED_RESET=1 npm run db:seed                 # (re)charge le jeu de démonstration
+npm run dev:api                              # API sur http://localhost:3000/api
+npm run dev:web                              # interface sur http://localhost:5173
+```
+
+Tests : `npm test` (base `sigp_test` requise : `createdb sigp_test`, ou `TEST_DATABASE_URL`).
+
+## Architecture
+
+Monolithe modulaire, API-first, conformément à la fiche technique de réalisation.
+
+```
+apps/
+  api/    NestJS 10 · Drizzle ORM · PostgreSQL 16 · JWT · Zod · ExcelJS · PDFKit
+    src/common/        audit chaîné, numérotation des pièces, droits, notifications
+    src/modules/       un module par domaine métier (voir ci-dessous)
+    drizzle/           migrations SQL versionnées (dont les triggers d'inaltérabilité)
+    test/              tests de bout en bout (parcours métier complets)
+  web/    React 18 · TypeScript · Vite · TanStack Query · React Router
+deploy/   images Docker (API, nginx) ; docker-compose.yml à la racine
+```
+
+| Module | Contenu |
+|---|---|
+| auth | Connexion, profils et droits (8 profils, 23 droits) |
+| workflow | Circuits de validation génériques, séparation des tâches, relances |
+| referentials | Nomenclature SYSCOHADA, structure, localisations, utilisateurs |
+| assets | Registre, fiche bien, plan d'amortissement, historique, étiquettes et QR codes |
+| receptions | PV de réception, réserves, visa, immatriculation, ordre d'entrée, écriture |
+| movements | Affectation, transfert (avec transit), prêt, restitution ; gel pendant l'inventaire |
+| inventory | Campagnes, zones, comptage à l'aveugle, rapprochement, écarts et décisions, clôture |
+| depreciation | Moteur linéaire / dégressif (30/360, prorata), simulation, définitif, clôture de période |
+| journal | Lots d'écritures équilibrés, export CSV pour l'ERP, accusés d'intégration |
+| disposals | Réforme : contrôle financier, commission, ordonnateur, sortie et écriture de cession |
+| dashboard / reports | Indicateurs de pilotage et de contrôle interne ; états Excel et PDF |
+| portal | Portail détenteur : mes biens, demandes, attestation de détention |
+
+### Choix techniques notables
+
+- **Backend en TypeScript (NestJS) plutôt que Laravel** : dans l'environnement de réalisation, le dépôt de paquets PHP
+  n'était pas accessible ; NestJS reprend la même architecture (monolithe modulaire, services par domaine, API REST).
+- **Drizzle ORM** : SQL explicite, migrations versionnées, aucun moteur binaire à télécharger.
+- **Montants en FCFA entiers** (bigint) ; aucun calcul en virgule flottante persisté.
+- **Journal d'audit inaltérable** : ajout seul (triggers PostgreSQL), chaînage SHA-256 vérifiable depuis l'interface.
+- **Un bien ne se supprime jamais** (trigger) : il sort du patrimoine par une pièce ; son code n'est jamais réattribué.
+- **Numérotation continue des pièces** par entité, préfixe et année : `PVR-ENT01-2026-000001`, `MEF-INF-2026-001501`.
+
+## Périmètre
+
+Lot 1 livré : référentiels, biens, entrées en patrimoine, étiquetage, mouvements, inventaire, valorisation,
+écritures, réformes et sorties, états, tableau de bord, audit, portail détenteur.
+
+Lot 2 (prévu, visible dans le menu) : immobilier et foncier, parc automobile, maintenance, rapprochement comptable
+et clôture d'exercice assistée, plan de renouvellement, application mobile d'inventaire hors ligne (React Native).

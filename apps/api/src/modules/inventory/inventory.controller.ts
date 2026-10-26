@@ -142,14 +142,15 @@ export class InventoryController {
         const [dup] = await tx.select({ id: inventoryCounts.id, zoneId: inventoryCounts.zoneId }).from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.assetId, a.id)));
         if (dup && dup.zoneId !== z.id) throw new ConflictException(`${code} a déjà été constaté dans une autre zone : signalé au chef d'équipe`);
         if (dup) {
-          await tx.update(inventoryCounts).set({ condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? z.locationId, countedBy: ctx.user.id, countedAt: new Date() }).where(eq(inventoryCounts.id, dup.id));
+          await tx.update(inventoryCounts).set({ condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? null, countedBy: ctx.user.id, countedAt: new Date() }).where(eq(inventoryCounts.id, dup.id));
           return { status: 'MIS_A_JOUR', code, designation: a.designation };
         }
       } else {
         const [dup] = await tx.select({ id: inventoryCounts.id }).from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.scannedCode, code), isNull(inventoryCounts.assetId)));
         if (dup) return { status: 'DEJA_SIGNALE', code, designation: 'Code non référencé' };
       }
-      await tx.insert(inventoryCounts).values({ campaignId: c.id, zoneId: z.id, assetId: a?.id ?? null, scannedCode: code, condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? z.locationId, countedBy: ctx.user.id });
+      // Sans local précis, le bien est réputé trouvé dans sa zone (localisation non contestée).
+      await tx.insert(inventoryCounts).values({ campaignId: c.id, zoneId: z.id, assetId: a?.id ?? null, scannedCode: code, condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? null, countedBy: ctx.user.id });
       if (z.status === 'A_FAIRE') await tx.update(inventoryZones).set({ status: 'EN_COURS' }).where(eq(inventoryZones.id, z.id));
       return a ? { status: 'RECONNU', code, designation: a.designation } : { status: 'EXCEDENT', code, designation: 'Code non référencé : sera traité comme excédent' };
     });
@@ -177,6 +178,7 @@ export class InventoryController {
       const expected = await tx.select({ e: inventoryExpected, code: assets.code, designation: assets.designation }).from(inventoryExpected).innerJoin(assets, eq(assets.id, inventoryExpected.assetId)).where(eq(inventoryExpected.campaignId, c.id));
       const counts = await tx.select({ k: inventoryCounts, code: assets.code, designation: assets.designation }).from(inventoryCounts).leftJoin(assets, eq(assets.id, inventoryCounts.assetId)).where(eq(inventoryCounts.campaignId, c.id));
       const existing = await tx.select().from(inventoryGaps).where(eq(inventoryGaps.campaignId, c.id));
+      const zoneLoc = new Map((await tx.select().from(inventoryZones).where(eq(inventoryZones.campaignId, c.id))).map((z) => [z.id, z.locationId]));
       const keep = new Set(existing.filter((g) => g.status !== 'A_TRAITER').map((g) => `${g.type}:${g.assetId ?? g.scannedCode}`));
       await tx.delete(inventoryGaps).where(and(eq(inventoryGaps.campaignId, c.id), eq(inventoryGaps.status, 'A_TRAITER')));
       const byAsset = new Map(counts.filter((k) => k.k.assetId).map((k) => [k.k.assetId!, k]));
@@ -186,15 +188,17 @@ export class InventoryController {
       for (const e of expected) {
         const k = byAsset.get(e.e.assetId);
         if (!k) { push({ campaignId: c.id, type: 'MANQUANT', assetId: e.e.assetId, detail: `${e.designation} · attendu : ${paths.get(e.e.expectedLocationId!) ?? '—'}` }); continue; }
-        if (k.k.locationId && e.e.expectedLocationId && k.k.locationId !== e.e.expectedLocationId)
-          push({ campaignId: c.id, type: 'MAL_LOCALISE', assetId: e.e.assetId, detail: `Attendu : ${paths.get(e.e.expectedLocationId)} · trouvé : ${paths.get(k.k.locationId)}` });
+        const foundAt = k.k.locationId ?? (k.k.zoneId !== e.e.zoneId ? zoneLoc.get(k.k.zoneId) ?? null : null);
+        if (foundAt && e.e.expectedLocationId && foundAt !== e.e.expectedLocationId)
+          push({ campaignId: c.id, type: 'MAL_LOCALISE', assetId: e.e.assetId, detail: `Attendu : ${paths.get(e.e.expectedLocationId)} · trouvé : ${paths.get(foundAt)}` });
         const order = (x: string | null) => COND.indexOf((x ?? 'BON') as (typeof COND)[number]);
         if (order(k.k.condition) >= 3 && order(k.k.condition) > order(e.e.expectedCondition))
           push({ campaignId: c.id, type: 'ECART_ETAT', assetId: e.e.assetId, detail: `Fiche : ${(e.e.expectedCondition ?? 'BON').toLowerCase()} · constat : ${k.k.condition.toLowerCase().replace('_', ' ')}${k.k.comment ? ' · ' + k.k.comment : ''}` });
       }
       for (const k of counts) {
-        if (!k.k.assetId) push({ campaignId: c.id, type: 'EXCEDENT', scannedCode: k.k.scannedCode, detail: `Code ${k.k.scannedCode} non référencé · trouvé : ${paths.get(k.k.locationId!) ?? '—'}${k.k.comment ? ' · ' + k.k.comment : ''}` });
-        else if (!expMap.has(k.k.assetId)) push({ campaignId: c.id, type: 'EXCEDENT', assetId: k.k.assetId, scannedCode: k.code, detail: `${k.designation} trouvé hors périmètre attendu : ${paths.get(k.k.locationId!) ?? '—'}` });
+        const where = paths.get(k.k.locationId ?? zoneLoc.get(k.k.zoneId) ?? -1) ?? '—';
+        if (!k.k.assetId) push({ campaignId: c.id, type: 'EXCEDENT', scannedCode: k.k.scannedCode, detail: `Code ${k.k.scannedCode} non référencé · trouvé : ${where}${k.k.comment ? ' · ' + k.k.comment : ''}` });
+        else if (!expMap.has(k.k.assetId)) push({ campaignId: c.id, type: 'EXCEDENT', assetId: k.k.assetId, scannedCode: k.code, detail: `${k.designation} trouvé hors périmètre attendu : ${where}` });
       }
       for (let i = 0; i < gaps.length; i += 1000) await tx.insert(inventoryGaps).values(gaps.slice(i, i + 1000));
       await this.audit.log(tx, ctx, 'RAPPROCHEMENT', 'INVENTAIRE', c.number, { nouveauxEcarts: gaps.length });
@@ -242,7 +246,8 @@ export class InventoryController {
     const [k] = await tx.select().from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.assetId, g.assetId!)));
     const ev = (summary: string) => tx.insert(assetEvents).values({ assetId: g.assetId!, type: 'INVENTAIRE', documentNo: c.number, summary, actorId: ctx.user.id });
     if (decision === 'CONSTAT_PERTE') { await tx.update(assets).set({ status: 'MANQUANT', updatedAt: new Date() }).where(eq(assets.id, g.assetId!)); await ev('Constat de perte à l\'inventaire : statut Manquant'); }
-    if (decision === 'TRANSFERT_REGULARISATION' && k?.locationId) { await tx.update(assets).set({ locationId: k.locationId, updatedAt: new Date() }).where(eq(assets.id, g.assetId!)); await ev('Localisation régularisée selon le constat d\'inventaire'); }
+    const foundAt = k ? k.locationId ?? (await tx.select({ l: inventoryZones.locationId }).from(inventoryZones).where(eq(inventoryZones.id, k.zoneId)))[0]?.l : null;
+    if (decision === 'TRANSFERT_REGULARISATION' && foundAt) { await tx.update(assets).set({ locationId: foundAt, updatedAt: new Date() }).where(eq(assets.id, g.assetId!)); await ev('Localisation régularisée selon le constat d\'inventaire'); }
     if ((decision === 'METTRE_A_JOUR' || decision === 'A_REFORMER') && k) { await tx.update(assets).set({ condition: k.condition, updatedAt: new Date() }).where(eq(assets.id, g.assetId!)); await ev(`État mis à jour : ${k.condition.toLowerCase().replace('_', ' ')}${decision === 'A_REFORMER' ? ' · à proposer à la réforme' : ''}`); }
     if (decision === 'MAINTENANCE') { await tx.update(assets).set({ status: 'EN_MAINTENANCE', condition: k?.condition ?? 'MAUVAIS', updatedAt: new Date() }).where(eq(assets.id, g.assetId!)); await ev('Envoyé en maintenance suite à l\'inventaire'); }
     if (decision === 'RETROUVE') await ev('Retrouvé au second passage d\'inventaire');

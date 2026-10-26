@@ -190,6 +190,7 @@ export async function seed(opts: { url?: string; reset?: boolean; scale?: number
   seq.set('INF-2023', Math.max(seq.get('INF-2023') ?? 0, 812));
   for (const [k, v] of seq) { const [prefix, y] = k.split('-'); await db.insert(s.sequences).values({ entityId: E, key: `BIEN-${prefix}`, year: Number(y), value: v }).onConflictDoUpdate({ target: [s.sequences.entityId, s.sequences.key, s.sequences.year], set: { value: v } }); }
   await pool.query(`insert into asset_events (asset_id, type, summary, at) select id, 'ENTREE', 'Repris au registre (bilan d''ouverture)', acquisition_date::timestamptz from assets`);
+  await pool.query(`update assets set last_seen_at = timestamptz '2025-11-21 10:00:00+00' + (id % 12) * interval '1 day' where label_status = 'CONTROLEE' and acquisition_date < '2025-11-01'`);
   log(`Biens repris : ${batch.length}`);
 
   // ---------- Opérations 2026 par les services de l'application ----------

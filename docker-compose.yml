@@ -1,0 +1,20 @@
+# Démarrage complet : docker compose up --build  →  http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: sigp, POSTGRES_PASSWORD: sigp, POSTGRES_DB: sigp }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U sigp"], interval: 5s, retries: 10 }
+  api:
+    build: { context: ., dockerfile: deploy/Dockerfile.api }
+    environment:
+      DATABASE_URL: postgres://sigp:sigp@db:5432/sigp
+      JWT_SECRET: ${JWT_SECRET:-a-changer-absolument}
+      SEED_DEMO: ${SEED_DEMO:-1}
+    depends_on: { db: { condition: service_healthy } }
+  web:
+    build: { context: ., dockerfile: deploy/Dockerfile.web }
+    ports: ["8080:80"]
+    depends_on: [api]
+volumes:
+  pgdata:

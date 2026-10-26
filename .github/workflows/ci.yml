@@ -1,0 +1,21 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: sigp, POSTGRES_PASSWORD: sigp, POSTGRES_DB: sigp_test }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx tsc -p apps/api/tsconfig.build.json --noEmit
+      - run: npm test -w apps/api
+        env: { TEST_DATABASE_URL: 'postgres://sigp:sigp@localhost:5432/sigp_test' }
+      - run: npm run build -w apps/web
+      - run: npm test -w apps/web
