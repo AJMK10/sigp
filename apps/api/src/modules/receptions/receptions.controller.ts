@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, OnModuleInit, Param, Patch, Post } from '@nestjs/common';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { DB, Tx } from '../../db/client';
+import { assertYearOpen } from '../closing/closing.controller';
 import { assetEvents, assets, categories, locations, receptionLines, receptions, users } from '../../db/schema';
 import { InjectDb } from '../../common/db.module';
 import { CurrentCtx, Ctx, Perm } from '../../common/context';
@@ -73,6 +74,7 @@ export class ReceptionsController implements OnModuleInit {
   async create(@CurrentCtx() ctx: Ctx, @Body() body: unknown) {
     const b = parse(recSchema, body);
     return this.db.transaction(async (tx) => {
+      await assertYearOpen(tx, ctx.user.entityId, b.deliveryDate);
       const number = await this.numbering.piece(tx, ctx.user.entityId, 'PVR');
       const { lines, ...head } = b;
       const [r] = await tx.insert(receptions).values({ ...head, entityId: ctx.user.entityId, number, createdBy: ctx.user.id }).returning();
@@ -87,6 +89,7 @@ export class ReceptionsController implements OnModuleInit {
     const b = parse(recSchema, body);
     return this.db.transaction(async (tx) => {
       const r = await this.editable(tx, ctx, parse(zId, id));
+      await assertYearOpen(tx, ctx.user.entityId, b.deliveryDate);
       const { lines, ...head } = b;
       await tx.update(receptions).set({ ...head, status: 'BROUILLON' }).where(eq(receptions.id, r.id));
       await tx.delete(receptionLines).where(eq(receptionLines.receptionId, r.id));

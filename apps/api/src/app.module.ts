@@ -22,6 +22,14 @@ import { DashboardController } from './modules/dashboard/dashboard.controller';
 import { PortalController } from './modules/portal/portal.controller';
 import { AuditController, NotificationsController } from './modules/misc/misc.controller';
 import { ReportsController } from './modules/reports/reports.controller';
+import { PropertyController } from './modules/property/property.controller';
+import { FleetController, MissionsController } from './modules/fleet/fleet.controller';
+import { MaintenanceController, ContractsController } from './modules/maintenance/maintenance.controller';
+import { RevaluationController } from './modules/revaluation/revaluation.controller';
+import { ClosingController } from './modules/closing/closing.controller';
+import { DocumentsController } from './modules/documents/documents.controller';
+import { CmatController } from './modules/cmat/cmat.controller';
+import { RenewalController } from './modules/renewal/renewal.controller';
 import { HealthController } from './health.controller';
 
 /**
@@ -31,7 +39,9 @@ import { HealthController } from './health.controller';
 @Module({
   imports: [DbModule, JwtModule.register({ global: true, secret: process.env.JWT_SECRET ?? 'dev-secret-change-me', signOptions: { expiresIn: '10h' } })],
   controllers: [HealthController, AuthController, WorkflowController, ReferentialsController, AssetsController, LabelsController, JournalController, ReceptionsController,
-    MovementsController, InventoryController, DepreciationController, DisposalsController, DashboardController, PortalController, NotificationsController, AuditController, ReportsController],
+    MovementsController, InventoryController, DepreciationController, DisposalsController, DashboardController, PortalController, NotificationsController, AuditController, ReportsController,
+    PropertyController, FleetController, MissionsController, MaintenanceController, ContractsController, RevaluationController, ClosingController,
+    DocumentsController, CmatController, RenewalController],
   providers: [AuditService, NumberingService, NotifyService, WorkflowService, JournalService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

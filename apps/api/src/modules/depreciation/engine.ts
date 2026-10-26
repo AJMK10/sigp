@@ -13,6 +13,11 @@ export interface DeprInput {
   method: Method;
   years: number;          // durée d'utilité en années
   inServiceDate: string | null; // AAAA-MM-JJ
+  /** Révision de durée (changement d'estimation, prospectif) : à partir de `date`, le solde amortissable
+   *  restant à cette date est étalé linéairement sur la durée restante ; avant, la durée initiale s'applique. */
+  revision?: { date: string; cumulative: number; previousYears: number } | null;
+  /** Dépréciation constatée : le cumul des amortissements ne peut dépasser base − résiduelle − dépréciation. */
+  impairment?: number;
 }
 export interface ScheduleLine { year: number; dotation: number; cumulative: number; nbv: number }
 
@@ -59,8 +64,27 @@ function degressiveYears(input: DeprInput): { year: number; dotation: number; fi
   return out;
 }
 
+function dayBefore(d: string): string {
+  const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10);
+}
+
 /** Cumul des amortissements à la date donnée (incluse), arrondi au franc. */
 export function cumulativeAt(input: DeprInput, date: string): number {
+  const cap = Math.max(0, input.base - (input.residual ?? 0) - (input.impairment ?? 0));
+  const r = input.revision;
+  if (r && input.inServiceDate && r.date > input.inServiceDate) {
+    if (date < r.date) return Math.min(cap, cumulativeAt({ ...input, revision: null, impairment: 0, years: r.previousYears }, date));
+    const elapsed = days360Inclusive(input.inServiceDate, dayBefore(r.date));
+    const remainingDays = input.years * 360 - elapsed;
+    const remaining = Math.max(0, input.base - (input.residual ?? 0) - r.cumulative);
+    if (remainingDays <= 0) return Math.min(cap, r.cumulative + remaining);
+    const done = days360Inclusive(r.date, date);
+    return Math.round(Math.min(cap, r.cumulative + Math.min(remaining, (remaining * done) / remainingDays)));
+  }
+  return Math.min(cap, cumulativeBase(input, date));
+}
+
+function cumulativeBase(input: DeprInput, date: string): number {
   if (input.method === 'NON_AMORTISSABLE' || !input.inServiceDate || input.years <= 0) return 0;
   if (date < input.inServiceDate) return 0;
   const depreciable = Math.max(0, input.base - (input.residual ?? 0));

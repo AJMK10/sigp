@@ -11,6 +11,8 @@ services:
       DATABASE_URL: postgres://sigp:sigp@db:5432/sigp
       JWT_SECRET: ${JWT_SECRET:-a-changer-absolument}
       SEED_DEMO: ${SEED_DEMO:-1}
+      STORAGE_DIR: /data/storage
+    volumes: [docs:/data/storage]
     depends_on: { db: { condition: service_healthy } }
   web:
     build: { context: ., dockerfile: deploy/Dockerfile.web }
@@ -18,3 +20,4 @@ services:
     depends_on: [api]
 volumes:
   pgdata:
+  docs:

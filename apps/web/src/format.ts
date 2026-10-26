@@ -49,3 +49,21 @@ export const ACTION_LABELS: Record<string, string> = {
   LANCEMENT: "Lancement d'inventaire", RAPPROCHEMENT: "Rapprochement d'inventaire", DECISION_ECART: "Décision sur écart", CLOTURE: 'Clôture', CLOTURE_ZONE: 'Clôture de zone',
   ATTESTATION: 'Attestation de détention', DEMANDE: 'Demande du portail', REPONSE_DEMANDE: 'Réponse à une demande', RECEPTION_TRANSFERT: 'Réception de transfert',
 };
+// ---------------------------------------------------------------- Lot 2
+export const TITLE_TYPE: Record<string, [string, Tone]> = { TITRE_FONCIER: ['Titre foncier', 'ok'], ACD: ['ACD', 'info'], LETTRE_ATTRIBUTION: ["Lettre d'attribution", 'warn'], AUCUN: ['Sans titre', 'bad'] };
+export const OCCUPANCY_KIND: Record<string, [string, Tone]> = { AFFECTATION: ['Service occupant', 'navy'], BAIL: ['Bail consenti', 'info'], VACANT: ['Vacant', 'warn'] };
+export const PROPERTY_EVENT: Record<string, string> = { TRAVAUX: 'Travaux', CONTENTIEUX: 'Contentieux', CONTROLE: 'Contrôle réglementaire' };
+export const PROPERTY_EVENT_STATUS: Record<string, [string, Tone]> = { PROGRAMME: ['Programmé', 'grey'], EN_COURS: ['En cours', 'warn'], CLOS: ['Clos', 'ok'], A_JOUR: ['À jour', 'ok'] };
+export const MISSION_STATUS: Record<string, [string, Tone]> = { DEMANDE: ['À valider', 'warn'], VALIDEE: ['Validée', 'info'], EN_COURS: ['En cours', 'navy'], CLOTUREE: ['Clôturée', 'ok'], REJETEE: ['Refusée', 'bad'], ANNULEE: ['Annulée', 'grey'] };
+export const ENERGY: Record<string, string> = { ESSENCE: 'Essence', GASOIL: 'Gasoil', HYBRIDE: 'Hybride', ELECTRIQUE: 'Électrique' };
+export const INCIDENT_STATUS: Record<string, [string, Tone]> = { OUVERT: ['Ouvert', 'warn'], EXPERTISE: ['En expertise', 'info'], CLOS: ['Clos', 'ok'] };
+export const WO_STATUS: Record<string, [string, Tone]> = { A_PLANIFIER: ['À planifier', 'grey'], PLANIFIE: ['Planifié', 'info'], EN_COURS: ['En cours', 'navy'], ATTENTE_PIECES: ['Attente de pièces', 'warn'], TERMINE: ['Terminé', 'ok'], ANNULE: ['Annulé', 'grey'] };
+export const WO_PRIORITY: Record<string, [string, Tone]> = { BASSE: ['Basse', 'grey'], NORMALE: ['Normale', 'info'], HAUTE: ['Haute', 'warn'], URGENTE: ['Urgente', 'bad'] };
+export const CONTRACT_KIND: Record<string, string> = { MAINTENANCE: 'Maintenance', ASSURANCE: 'Assurance', GARANTIE: 'Garantie', LOCATION: 'Location' };
+export const CONTRACT_STATE: Record<string, [string, Tone]> = { ACTIF: ['Actif', 'ok'], ECHEANCE_90: ['Échéance < 90 j', 'info'], ECHEANCE_30: ['Échéance < 30 j', 'warn'], EXPIRE: ['Expiré', 'bad'], RESILIE: ['Résilié', 'grey'] };
+export const REVAL_STATUS: Record<string, [string, Tone]> = { BROUILLON: ['Brouillon', 'grey'], EN_COURS: ['En validation', 'warn'], APPLIQUE: ['Appliquée', 'ok'], REJETE: ['Rejetée', 'bad'] };
+export const REVAL_KIND: Record<string, string> = { REVISION_DUREE: "Révision de la durée d'utilité", DEPRECIATION: 'Dépréciation', REPRISE_DEPRECIATION: 'Reprise de dépréciation' };
+export const NOTE_STATUS: Record<string, [string, Tone]> = { A_CORRIGER: ['À corriger', 'bad'], CORRIGE: ['Corrigé', 'ok'], JUSTIFIE: ['Justifié', 'info'] };
+export const DOC_CATEGORY: Record<string, string> = { FACTURE: 'Facture', PV: 'Procès-verbal', TITRE: 'Titre ou acte', CONTRAT: 'Contrat ou police', PHOTO: 'Photo', DECHARGE: 'Décharge signée', EXPERTISE: "Rapport d'expertise", AUTRE: 'Autre' };
+export const DOC_OBJECT: Record<string, string> = { BIEN: 'Bien', RECEPTION: 'Réception', MOUVEMENT: 'Mouvement', REFORME: 'Réforme', CONTRAT: 'Contrat', MISSION: 'Mission', OT: 'Ordre de travail', INVENTAIRE: 'Inventaire', REVISION: 'Révision' };
+export const fmtKm = (n: number | null | undefined) => (n == null ? '—' : `${nf.format(n)} km`);

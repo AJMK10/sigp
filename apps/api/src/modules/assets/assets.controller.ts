@@ -1,3 +1,4 @@
+import { assertYearOpen } from '../closing/closing.controller';
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { and, asc, count, desc, eq, ilike, inArray, or, sql, SQL } from 'drizzle-orm';
 import { DB } from '../../db/client';
@@ -87,6 +88,7 @@ export class AssetsController {
       holderId: zId.nullable().optional(), condition: z.enum(['NEUF', 'BON', 'MOYEN', 'MAUVAIS', 'HORS_USAGE']).default('BON'), supplier: z.string().optional(), justification: z.string().min(3),
     }), body);
     return this.db.transaction(async (tx) => {
+      await assertYearOpen(tx, ctx.user.entityId, b.acquisitionDate);
       const [cat] = await tx.select().from(categories).where(and(eq(categories.id, b.categoryId), eq(categories.entityId, ctx.user.entityId)));
       if (!cat || !cat.prefix) throw new BadRequestException('Choisissez une catégorie de dernier niveau (avec préfixe de codification)');
       const code = await this.numbering.assetCode(tx, ctx.user.entityId, cat.prefix, Number(b.acquisitionDate.slice(0, 4)));

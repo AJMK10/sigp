@@ -17,6 +17,10 @@ import { CalculDetail, EcritureDetail, Ecritures, Valorisation } from './pages/V
 import { NouvelleReforme, ReformeDetail, Reformes } from './pages/Reformes';
 import { Audit, Etats, Parametrage, Structures, Utilisateurs } from './pages/Admin';
 import { Demandes, Portail } from './pages/Portail';
+import { ImmoFiche, Immobilier } from './pages/Immobilier';
+import { Flotte, Missions, Vehicule } from './pages/Flotte';
+import { ContratDetail, Contrats, Maintenance, OtDetail } from './pages/Maintenance';
+import { Cloture, ComptaMatieres, Ged, NouvelleRevision, Renouvellement, RevisionDetail, Revisions } from './pages/Pilotage2';
 
 function Guard({ perms, children }: { perms: string[]; children: ReactNode }) {
   const { can } = useAuth();
@@ -65,6 +69,22 @@ export function App() {
         <Route path="/portail" element={<Guard perms={['portal.use']}><Portail /></Guard>} />
         <Route path="/portail/demandes" element={<Navigate to="/demandes" replace />} />
         <Route path="/demandes" element={<Guard perms={['assets.write']}><Demandes /></Guard>} />
+        <Route path="/immobilier" element={<Guard perms={['property.manage', 'reports.read']}><Immobilier /></Guard>} />
+        <Route path="/immobilier/:id" element={<Guard perms={['property.manage', 'reports.read']}><ImmoFiche /></Guard>} />
+        <Route path="/flotte" element={<Guard perms={['fleet.manage', 'reports.read']}><Flotte /></Guard>} />
+        <Route path="/flotte/:id" element={<Guard perms={['fleet.manage', 'reports.read']}><Vehicule /></Guard>} />
+        <Route path="/missions" element={<Guard perms={['fleet.use', 'fleet.manage']}><Missions /></Guard>} />
+        <Route path="/maintenance" element={<Guard perms={['maintenance.manage', 'reports.read']}><Maintenance /></Guard>} />
+        <Route path="/maintenance/ot/:id" element={<Guard perms={['maintenance.manage', 'assets.read']}><OtDetail /></Guard>} />
+        <Route path="/contrats" element={<Guard perms={['contracts.manage', 'assets.read']}><Contrats /></Guard>} />
+        <Route path="/contrats/:id" element={<Guard perms={['contracts.manage', 'assets.read']}><ContratDetail /></Guard>} />
+        <Route path="/revisions" element={<Guard perms={['revaluation.write', 'depreciation.read']}><Revisions /></Guard>} />
+        <Route path="/revisions/nouvelle" element={<Guard perms={['revaluation.write']}><NouvelleRevision /></Guard>} />
+        <Route path="/revisions/:id" element={<Guard perms={['revaluation.write', 'depreciation.read']}><RevisionDetail /></Guard>} />
+        <Route path="/cloture" element={<Guard perms={['closing.manage']}><Cloture /></Guard>} />
+        <Route path="/comptabilite-matieres" element={<Guard perms={['reports.read']}><ComptaMatieres /></Guard>} />
+        <Route path="/renouvellement" element={<Guard perms={['reports.read', 'depreciation.read']}><Renouvellement /></Guard>} />
+        <Route path="/documents" element={<Guard perms={['documents.write', 'audit.read']}><Ged /></Guard>} />
         <Route path="*" element={<div className="note warn">Page introuvable.</div>} />
       </Routes>
     </Layout>

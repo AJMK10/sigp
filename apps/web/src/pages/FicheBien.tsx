@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, download, patch } from '../api';
 import { ASSET_STATUS, CONDITION, ENTRY_MODE, LABEL_STATUS, MOVEMENT_STATUS, MOVEMENT_TYPE, DISPOSAL_STATUS, date, dateTime, fcfa, pct } from '../format';
 import { useAuth } from '../auth';
+import { Documents } from '../components/Documents';
 import { Card, ErrorBox, Field, Loading, Modal, Mono, Note, Pill, QR, StatusPill, Tabs, useAction, useToast } from '../components/ui';
 import type { Row } from '../types';
 
@@ -76,6 +77,7 @@ export function FicheBien() {
           </ul> : <Note>Aucun mouvement enregistré pour ce bien.</Note>)}
         </div>
       </Card>
+      <Documents objectType="BIEN" objectId={a.id} />
       {edit && <EditAsset a={a} onClose={() => setEdit(false)} />}
     </>
   );

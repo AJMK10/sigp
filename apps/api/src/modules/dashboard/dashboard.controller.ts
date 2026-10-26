@@ -21,28 +21,29 @@ export class DashboardController {
     const root = (id: number) => { let c = catById.get(id); while (c?.parentId && catById.get(c.parentId)?.parentId) c = catById.get(c.parentId); return c; };
     const rows = await this.db.select({ id: assets.id, status: assets.status, categoryId: assets.categoryId, acquisitionValue: assets.acquisitionValue, residualValue: assets.residualValue,
       deprMethod: assets.deprMethod, deprYears: assets.deprYears, inServiceDate: assets.inServiceDate, acquisitionDate: assets.acquisitionDate, exitDate: assets.exitDate,
-      labelStatus: assets.labelStatus, warrantyEnd: assets.warrantyEnd }).from(assets).where(eq(assets.entityId, eid));
+      labelStatus: assets.labelStatus, warrantyEnd: assets.warrantyEnd,
+      revisedAt: assets.revisedAt, revisedCumulative: assets.revisedCumulative, previousYears: assets.previousYears, impairment: assets.impairment }).from(assets).where(eq(assets.entityId, eid));
 
-    let gross = 0, cum = 0, active = 0, fullyDepr = 0, lowValue = 0;
+    let gross = 0, cum = 0, imp = 0, active = 0, fullyDepr = 0, lowValue = 0;
     const byStatus: Record<string, number> = {};
     const byCat = new Map<string, { label: string; nbv: number; gross: number; count: number }>();
     const history = Array.from({ length: 5 }, (_, i) => ({ year: year - 4 + i, gross: 0, nbv: 0 }));
     for (const a of rows) {
       for (const h of history) {
         const end = h.year === year ? now : `${h.year}-12-31`;
-        if (a.acquisitionDate <= end && (!a.exitDate || a.exitDate > end)) { const c = cumulativeAt(deprInput(a), end); h.gross += a.acquisitionValue; h.nbv += a.acquisitionValue - c; }
+        if (a.acquisitionDate <= end && (!a.exitDate || a.exitDate > end)) { const c = cumulativeAt(deprInput(a), end); h.gross += a.acquisitionValue; h.nbv += a.acquisitionValue - c - a.impairment; }
       }
       if (a.status === 'SORTI') continue;
       active++;
       byStatus[a.status] = (byStatus[a.status] ?? 0) + 1;
       const c = cumulativeAt(deprInput(a), now);
-      gross += a.acquisitionValue; cum += c;
+      gross += a.acquisitionValue; cum += c; imp += a.impairment;
       if (a.deprMethod !== 'NON_AMORTISSABLE' && a.acquisitionValue > 0 && c >= a.acquisitionValue - a.residualValue && a.status === 'EN_SERVICE') fullyDepr++;
       if (a.acquisitionValue < 300_000) lowValue++;
       const r = root(a.categoryId);
       const key = r?.code ?? '?';
       const x = byCat.get(key) ?? { label: r?.label ?? 'Autres', nbv: 0, gross: 0, count: 0 };
-      x.nbv += a.acquisitionValue - c; x.gross += a.acquisitionValue; x.count++; byCat.set(key, x);
+      x.nbv += a.acquisitionValue - c - a.impairment; x.gross += a.acquisitionValue; x.count++; byCat.set(key, x);
     }
     const [lastCampaign] = await this.db.select().from(inventoryCampaigns).where(and(eq(inventoryCampaigns.entityId, eid), ne(inventoryCampaigns.status, 'PREPARATION'))).orderBy(desc(inventoryCampaigns.id)).limit(1);
     let inventory = null;
@@ -66,7 +67,7 @@ export class DashboardController {
     const recent = await this.db.select().from(auditLog).where(and(eq(auditLog.entityId, eid), inArray(auditLog.action, ['CREATION', 'SOUMISSION', 'VALIDATION', 'EXECUTION', 'IMMATRICULATION', 'DOTATION_DEFINITIVE', 'SORTIE', 'CLOTURE', 'LANCEMENT', 'REJET'])))
       .orderBy(desc(auditLog.id)).limit(8);
     return {
-      asOf: now, grossValue: gross, nbv: gross - cum, wearRate: gross ? cum / gross : 0, activeCount: active, lowValueCount: lowValue,
+      asOf: now, grossValue: gross, nbv: gross - cum - imp, impairment: imp, wearRate: gross ? cum / gross : 0, activeCount: active, lowValueCount: lowValue,
       byStatus, byCategory: [...byCat.values()].sort((a, b) => b.nbv - a.nbv), history,
       control: { inventory, missing: byStatus.MANQUANT ?? 0, fullyDepreciatedInService: fullyDepr, unsignedDischarges: Number(unsigned), labelsPending, overdueLoans: Number(overdue), warrantiesExpiring: warranties },
       validations: { pending: Number(pending), late: Number(late) },

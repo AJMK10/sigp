@@ -53,3 +53,19 @@ describe('moteur d\'amortissement', () => {
     expect(cumulativeAt({ base: 5, method: 'LINEAIRE', years: 5, inServiceDate: null }, '2026-01-01')).toBe(0);
   });
 });
+
+describe('révision de durée et dépréciation', () => {
+  it('étale le solde restant sur la nouvelle durée à partir de la date d\'effet, sans retraiter le passé', () => {
+    const before = { base: 12_000_000, method: 'LINEAIRE' as const, years: 10, inServiceDate: '2020-01-01' };
+    const cumAtRevision = cumulativeAt(before, '2025-12-31'); // 6 ans sur 10
+    expect(cumAtRevision).toBe(7_200_000);
+    const after = { ...before, years: 12, revision: { date: '2026-01-01', cumulative: cumAtRevision, previousYears: 10 } };
+    expect(cumulativeAt(after, '2025-06-30')).toBe(cumulativeAt(before, '2025-06-30'));
+    expect(cumulativeAt(after, '2026-12-31')).toBe(7_200_000 + 800_000); // 4,8 M sur 6 ans restants
+    expect(cumulativeAt(after, '2031-12-31')).toBe(12_000_000);
+  });
+  it('plafonne les amortissements après dépréciation', () => {
+    const a = { base: 1_000_000, method: 'LINEAIRE' as const, years: 2, inServiceDate: '2025-01-01', impairment: 300_000 };
+    expect(cumulativeAt(a, '2027-01-01')).toBe(700_000);
+  });
+});

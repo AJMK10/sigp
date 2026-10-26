@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, patch, post } from '../api';
 import { ASSET_STATUS, CONDITION, REQUEST_STATUS, date } from '../format';
@@ -68,6 +69,7 @@ function Dispute({ campaignId, onClose }: { campaignId: number; onClose: () => v
 }
 
 export function Demandes() {
+  const { can } = useAuth();
   const q = useQuery({ queryKey: ['requests'], queryFn: () => api<Row[]>('/portail/demandes') });
   const [sel, setSel] = useState<Row | null>(null);
   return (
@@ -77,7 +79,8 @@ export function Demandes() {
         {q.isLoading ? <Loading /> : !q.data?.length ? <Empty>Aucune demande.</Empty> : <div className="table-wrap"><table className="t" style={{ minWidth: 800 }}>
           <thead><tr><th>Demande</th><th>Type</th><th>Détenteur</th><th>Bien</th><th>Description</th><th>Date</th><th>Statut</th><th /></tr></thead>
           <tbody>{q.data.map((r) => <tr key={r.id}><td><Mono>{r.number}</Mono></td><td>{r.typeLabel}</td><td>{r.by}</td><td>{r.code ? <Mono>{r.code}</Mono> : '—'}</td><td className="small">{r.description}</td><td className="small">{date(r.createdAt)}</td>
-            <td><StatusPill map={REQUEST_STATUS} value={r.status} /></td><td>{['OUVERTE', 'EN_COURS'].includes(r.status) && <button className="btn small" onClick={() => setSel(r)}>Répondre</button>}</td></tr>)}</tbody>
+            <td><StatusPill map={REQUEST_STATUS} value={r.status} /></td><td><div className="actions" style={{ flexWrap: 'nowrap' }}>{r.status === 'OUVERTE' && r.type === 'PANNE' && r.assetId && can('maintenance.manage') && <Link className="btn small primary" to={`/maintenance?nouveau=${r.assetId}&demande=${r.id}`}>Ordre de travail</Link>}
+              {['OUVERTE', 'EN_COURS'].includes(r.status) && <button className="btn small" onClick={() => setSel(r)}>Répondre</button>}</div></td></tr>)}</tbody>
         </table></div>}
       </Card>
       {sel && <Answer r={sel} onClose={() => setSel(null)} />}

@@ -11,7 +11,7 @@ const NAV: [string, Item[]][] = [
     { to: '/validations', label: 'Validations', badge: 'validations' },
     { to: '/notifications', label: 'Notifications', badge: 'notifications' },
     { to: '/etats', label: 'États et rapports', perms: ['reports.read'] },
-    { to: '#', label: 'Plan de renouvellement', lot2: true },
+    { to: '/renouvellement', label: 'Plan de renouvellement', perms: ['reports.read', 'depreciation.read'] },
   ]],
   ['Patrimoine', [
     { to: '/biens', label: 'Registre des biens', perms: ['assets.read'] },
@@ -20,16 +20,20 @@ const NAV: [string, Item[]][] = [
     { to: '/mouvements', label: 'Mouvements', perms: ['movements.write', 'movements.validate'] },
     { to: '/inventaires', label: 'Inventaires', perms: ['inventory.manage', 'inventory.count', 'inventory.decide'] },
     { to: '/reformes', label: 'Réformes et sorties', perms: ['disposals.write', 'disposals.validate'] },
+    { to: '/documents', label: 'Documents', perms: ['documents.write', 'audit.read'] },
   ]],
   ['Domaines spécialisés', [
-    { to: '#', label: 'Immobilier et foncier', lot2: true },
-    { to: '#', label: 'Parc automobile', lot2: true },
-    { to: '#', label: 'Maintenance', lot2: true },
+    { to: '/immobilier', label: 'Immobilier et foncier', perms: ['property.manage', 'reports.read'] },
+    { to: '/flotte', label: 'Parc automobile', perms: ['fleet.manage', 'reports.read'] },
+    { to: '/missions', label: 'Ordres de mission', perms: ['fleet.use', 'fleet.manage'] },
+    { to: '/maintenance', label: 'Maintenance', perms: ['maintenance.manage', 'reports.read'], match: ['contrats'] },
   ]],
   ['Finances', [
     { to: '/valorisation', label: 'Valorisation', perms: ['depreciation.read'] },
     { to: '/ecritures', label: 'Écritures comptables', perms: ['journal.read'] },
-    { to: '#', label: 'Rapprochement et clôture', lot2: true },
+    { to: '/revisions', label: 'Révisions et dépréciations', perms: ['revaluation.write', 'depreciation.read'] },
+    { to: '/comptabilite-matieres', label: 'Comptabilité-matières', perms: ['reports.read'] },
+    { to: '/cloture', label: 'Rapprochement et clôture', perms: ['closing.manage'] },
   ]],
   ['Administration', [
     { to: '/parametrage', label: 'Paramétrage', perms: ['settings.manage'] },
@@ -43,6 +47,8 @@ const CRUMBS: Record<string, string> = {
   validations: 'Validations', notifications: 'Notifications', etats: 'États et rapports', biens: 'Registre des biens', receptions: 'Entrées en patrimoine', etiquettes: 'Étiquettes',
   mouvements: 'Mouvements', inventaires: 'Inventaires', reformes: 'Réformes et sorties', valorisation: 'Valorisation', ecritures: 'Écritures comptables', parametrage: 'Paramétrage',
   utilisateurs: 'Utilisateurs et droits', audit: "Journal d'audit", demandes: 'Demandes des détenteurs', portail: 'Portail détenteur',
+  immobilier: 'Immobilier et foncier', flotte: 'Parc automobile', missions: 'Ordres de mission', maintenance: 'Maintenance', contrats: 'Contrats et garanties', revisions: 'Révisions et dépréciations',
+  'comptabilite-matieres': 'Comptabilité-matières', cloture: 'Rapprochement et clôture', renouvellement: 'Plan de renouvellement', documents: 'Documents',
 };
 
 export function Layout({ children }: { children: ReactNode }) {

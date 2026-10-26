@@ -169,3 +169,31 @@ table.t tfoot td { font-weight: 700; background: var(--subtle); border-top: 1px 
 .scan-result { padding: 12px 14px; border-radius: 10px; font-size: 14px; }
 .qr { width: 96px; height: 96px; }
 @media print { .sidebar, .topbar, .no-print { display: none !important; } .content { padding: 0; } }
+
+/* Lot 2 */
+.linkish { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.linkish:hover { text-decoration: underline; }
+.doc-ico { width: 38px; height: 38px; border-radius: 8px; background: var(--bad-bg); color: var(--bad); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(190px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 4px; align-items: start; }
+.kanban-col { background: var(--subtle); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kanban-col h3 { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 4px; font-size: 13px; }
+.kcard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; text-decoration: none; color: var(--fg); }
+.kcard:hover { border-color: var(--accent); }
+.kcard.urgent { border-left: 4px solid var(--bad); }
+.kcard.high { border-left: 4px solid #D68A1C; }
+.map-wrap { position: relative; background: #EAF1F8; border-radius: 10px; overflow: hidden; }
+.map-wrap svg { display: block; width: 100%; height: auto; }
+.timeline { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 10px; align-items: end; height: 220px; border-bottom: 1px solid var(--input); padding: 0 4px; }
+.timeline .col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; font-size: 12px; }
+.timeline .stackbar { width: min(56px, 80%); display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; }
+.check-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.check-row:first-child { border-top: 0; }
+.check-dot { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.check-dot.ok { background: var(--ok-bg); color: var(--ok); } .check-dot.ko { background: var(--warn-bg); color: var(--warn); }
+.seg { display: inline-flex; border: 1px solid var(--input); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 0 12px; height: 34px; font: inherit; font-size: 13px; cursor: pointer; color: var(--muted-2); }
+.seg button.active { background: var(--accent-bg); color: var(--accent-ink); font-weight: 600; }
+.plate { display: inline-block; font-family: var(--mono); font-weight: 600; font-size: 13px; padding: 2px 8px; border: 1.5px solid var(--navy); border-radius: 5px; background: #fff; color: var(--navy); white-space: nowrap; letter-spacing: 0.02em; }
+.plate.sm { font-size: 11px; padding: 0 5px; border-width: 1px; }
+.plate.lg { font-size: 16px; padding: 4px 12px; border-width: 2px; }
+.hbars { display: flex; flex-direction: column; gap: 10px; }

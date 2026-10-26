@@ -312,6 +312,10 @@ export async function seed(opts: { url?: string; reset?: boolean; scale?: number
   await portal.request(ctx(U.traore), { type: 'PANNE', assetId: myLaptop.id, description: "L'écran reste noir au démarrage depuis ce matin." });
   await portal.request(ctx(U.traore), { type: 'EQUIPEMENT', description: "Besoin d'un second écran pour le poste de supervision réseau." });
 
+  const { seedLot2 } = await import('./seed-lot2');
+  await seedLot2(app, db, pool, { E, U, holders, cats: { cVeh, cMot, cOut, cCli, cInf, cImm, cTer }, locs: { abj, tb, parking, khg: regional[4].site, yam: regional[1].site },
+    units: { dg, daf, dsi, drYam: drs[0], drKhg: drs[3] }, laptops, ctx, approveAll, R, log });
+
   await app.close();
   await pool.end();
   log(`Données de démonstration prêtes. Mot de passe de tous les comptes : ${DEMO_PASSWORD}`);

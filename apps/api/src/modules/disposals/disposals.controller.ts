@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, OnModuleInit, Param, Patch, Post } from '@nestjs/common';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { DB, Tx } from '../../db/client';
+import { assertYearOpen } from '../closing/closing.controller';
 import { assetEvents, assets, categories, disposalItems, disposals, movementItems, movements, users } from '../../db/schema';
 import { InjectDb } from '../../common/db.module';
 import { CurrentCtx, Ctx, Perm } from '../../common/context';
@@ -141,6 +142,7 @@ export class DisposalsController implements OnModuleInit {
       const d = await this.load(tx, ctx, parse(zId, id));
       if (d.status !== 'APPROUVE') throw new BadRequestException("La sortie s'exécute après la décision de l'ordonnateur");
       if (b.exitDate > today()) throw new BadRequestException('La date de sortie ne peut pas être future');
+      await assertYearOpen(tx, ctx.user.entityId, b.exitDate);
       if (b.proceeds > 0 && d.exitMode !== 'VENTE') throw new BadRequestException('Un produit de cession suppose une vente');
       const rows = await tx.select({ a: assets, c: categories }).from(disposalItems).innerJoin(assets, eq(assets.id, disposalItems.assetId)).innerJoin(categories, eq(categories.id, assets.categoryId))
         .where(eq(disposalItems.disposalId, d.id));
@@ -150,7 +152,8 @@ export class DisposalsController implements OnModuleInit {
       for (const { a, c } of rows) {
         const cum = cumulativeAt(deprInput(a), b.exitDate);
         add(c.deprAccount ?? '2840', 'Amortissements des biens sortis', cum, 0);
-        add('8120', 'Valeur comptable des cessions', a.acquisitionValue - cum, 0);
+        if (a.impairment) add(c.deprAccount ? '29' + c.deprAccount.slice(2) : '2940', 'Dépréciations des biens sortis', a.impairment, 0);
+        add('8120', 'Valeur comptable des cessions', a.acquisitionValue - cum - (a.impairment ?? 0), 0);
         add(c.assetAccount ?? '2000', 'Sortie du patrimoine', 0, a.acquisitionValue);
         await tx.update(assets).set({ status: 'SORTI', exitDate: b.exitDate, exitReason: `${EXIT_MODES[d.exitMode]} · ${d.number}`, holderId: null, updatedAt: new Date() }).where(eq(assets.id, a.id));
       }

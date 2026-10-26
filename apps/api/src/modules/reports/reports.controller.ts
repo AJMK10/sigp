@@ -108,7 +108,7 @@ export class ReportsController {
       const cum = cumulativeAt(deprInput(a), d);
       tv += a.acquisitionValue; tc += cum;
       const r = add([a.code, a.designation, cat.label, cat.assetAccount, STATUS_LABELS[a.status], a.locationId ? paths.get(a.locationId) : '', holder ?? '', a.acquisitionDate, a.inServiceDate ?? '',
-        a.acquisitionValue, cum, a.acquisitionValue - cum, a.acquisitionValue ? cum / a.acquisitionValue : 0, a.deprMethod.toLowerCase(), a.deprYears]);
+        a.acquisitionValue, cum, a.acquisitionValue - cum - a.impairment, a.acquisitionValue ? cum / a.acquisitionValue : 0, a.deprMethod.toLowerCase(), a.deprYears]);
       r.getCell(13).numFmt = '0%';
     }
     const t = add(['Total', `${ws.rowCount - 4} biens`, '', '', '', '', '', '', '', tv, tc, tv - tc]);

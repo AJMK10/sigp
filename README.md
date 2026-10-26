@@ -1,8 +1,10 @@
-# SIGP · Système Intégré de Gestion du Patrimoine (lot 1)
+# SIGP · Système Intégré de Gestion du Patrimoine (lots 1 et 2)
 
 Application web de gestion du patrimoine pour les entreprises et les administrations publiques :
 entrée en patrimoine, immatriculation, mouvements, inventaire physique, amortissements, écritures comptables,
-réformes et sorties, comptabilité-matières, tableau de bord et journal d'audit inaltérable.
+réformes et sorties, comptabilité-matières, tableau de bord et journal d'audit inaltérable ;
+immobilier et foncier, parc automobile, maintenance et contrats, révisions et dépréciations,
+rapprochement comptable et clôture d'exercice, plan de renouvellement et gestion électronique des documents.
 Conforme au cahier des charges SIGP et à la maquette validée (charte SIGP, IBM Plex).
 
 ## Démarrage rapide (Docker)
@@ -18,13 +20,13 @@ Pour un environnement réel, lancez avec `SEED_DEMO=0` et un `JWT_SECRET` fort.
 
 | Compte | Profil | À essayer |
 |---|---|---|
-| konan.a@sigp.ci | Directeur du patrimoine | Tableau de bord, validation du transfert en attente, commission de réforme |
-| yao.k@sigp.ci | Gestionnaire du patrimoine | Réceptions, étiquettes, nouveau mouvement, dossier de réforme |
-| kone.d@sigp.ci | Comptable-matières | Visa de la réception des climatiseurs, décisions sur les écarts d'inventaire |
-| coulibaly.n@sigp.ci | Direction financière | Dotations d'octobre (simulation puis définitif), écritures, clôture de période |
+| konan.a@sigp.ci | Directeur du patrimoine | Tableau de bord, validation du transfert en attente, commission de réforme, plan de renouvellement |
+| yao.k@sigp.ci | Gestionnaire du patrimoine | Réceptions, mouvements, réformes ; immobilier (Tour B), parc automobile, ordres de mission à valider, maintenance (OT du serveur 811), contrats |
+| kone.d@sigp.ci | Comptable-matières | Visa de la réception des climatiseurs, écarts d'inventaire, comptabilité-matières (compte de gestion) |
+| coulibaly.n@sigp.ci | Direction financière | Dotations d'octobre, écritures, révision de durée des groupes électrogènes à valider, rapprochement au 30/09, clôture d'exercice |
 | diallo.f@sigp.ci | Contrôleur financier | Avis du contrôle financier, journal d'audit |
 | bamba.s@sigp.ci | Chef d'équipe d'inventaire | Comptage à l'aveugle d'une zone |
-| traore.m@sigp.ci | Détenteur | Portail : mes biens, demandes, attestation de détention |
+| traore.m@sigp.ci | Détenteur | Portail : mes biens, demandes, attestation de détention ; demande de véhicule (ordre de mission) |
 | admin@sigp.ci | Administrateur | Paramétrage, utilisateurs et droits |
 
 ## Développement local
@@ -71,6 +73,13 @@ deploy/   images Docker (API, nginx) ; docker-compose.yml à la racine
 | disposals | Réforme : contrôle financier, commission, ordonnateur, sortie et écriture de cession |
 | dashboard / reports | Indicateurs de pilotage et de contrôle interne ; états Excel et PDF |
 | portal | Portail détenteur : mes biens, demandes, attestation de détention |
+| property | Immobilier et foncier : titres (TF, ACD…), composants, occupations et baux, travaux, contentieux, échéances |
+| fleet | Parc automobile : véhicules, carburant, consommation anormale, échéances, sinistres, ordres de mission, coût de possession |
+| maintenance | Ordres de travail (kanban), couverture contrat ou garantie, plans préventifs, contrats et assurances |
+| revaluation | Révision de durée (prospective), dépréciation et reprise avec écritures, sous circuit de validation |
+| closing | Rapprochement registre / balance de l'ERP, explications d'écarts, contrôle et clôture d'exercice |
+| cmat / renewal | Comptabilité-matières (livre-journal, grand livre, compte de gestion) ; plan pluriannuel de renouvellement |
+| documents | GED : pièces jointes avec empreinte SHA-256, téléchargement contrôlé, vérification d'intégrité |
 
 ### Choix techniques notables
 
@@ -87,5 +96,11 @@ deploy/   images Docker (API, nginx) ; docker-compose.yml à la racine
 Lot 1 livré : référentiels, biens, entrées en patrimoine, étiquetage, mouvements, inventaire, valorisation,
 écritures, réformes et sorties, états, tableau de bord, audit, portail détenteur.
 
-Lot 2 (prévu, visible dans le menu) : immobilier et foncier, parc automobile, maintenance, rapprochement comptable
-et clôture d'exercice assistée, plan de renouvellement, application mobile d'inventaire hors ligne (React Native).
+Lot 2 livré : immobilier et foncier, parc automobile et ordres de mission, maintenance et contrats, révisions
+et dépréciations, rapprochement comptable et clôture d'exercice assistée (une pièce datée d'un exercice clôturé
+est refusée), comptabilité-matières, plan de renouvellement, gestion électronique des documents.
+
+Reste à réaliser : application mobile d'inventaire hors ligne (React Native), éditeur de circuits de validation
+paramétrables et générateur d'états personnalisés.
+
+Les pièces jointes sont stockées dans `STORAGE_DIR` (par défaut `apps/api/storage`) : prévoyez un volume persistant.

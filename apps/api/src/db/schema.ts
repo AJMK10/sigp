@@ -107,6 +107,10 @@ export const assets = pgTable('assets', {
   entryOrderNo: varchar('entry_order_no', { length: 40 }),
   warrantyEnd: date('warranty_end', { mode: 'string' }),
   attributes: jsonb('attributes').$type<Record<string, unknown>>().notNull().default({}),
+  revisedAt: date('revised_at', { mode: 'string' }), // date d'effet de la dernière révision de durée
+  revisedCumulative: money('revised_cumulative'),     // cumul figé à la veille de la révision
+  previousYears: integer('previous_years'),            // durée applicable avant la révision
+  impairment: money('impairment').notNull().default(0), // dépréciation (comptes 29x), distincte des amortissements
   exitDate: date('exit_date', { mode: 'string' }),
   exitReason: text('exit_reason'),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
@@ -404,3 +408,264 @@ export const auditLog = pgTable('audit_log', {
   prevHash: varchar('prev_hash', { length: 64 }).notNull(),
   hash: varchar('hash', { length: 64 }).notNull(),
 });
+
+/* ====================================================================================
+ * LOT 2 — immobilier, parc automobile, maintenance, contrats, révisions de valeur,
+ * rapprochement et clôture d'exercice, documents (GED).
+ * ==================================================================================== */
+
+export const titleType = pgEnum('title_type', ['TITRE_FONCIER', 'ACD', 'LETTRE_ATTRIBUTION', 'AUCUN']);
+
+/** Données propres aux biens immobiliers (terrain ou bâtiment), en complément de la fiche bien. */
+export const properties = pgTable('properties', {
+  assetId: integer('asset_id').primaryKey().references(() => assets.id),
+  kind: varchar('kind', { length: 12 }).notNull(), // TERRAIN, BATIMENT
+  address: text('address'),
+  lat: text('lat'),
+  lng: text('lng'),
+  landArea: integer('land_area'), // m²
+  builtArea: integer('built_area'),
+  floors: integer('floors'),
+  titleType: titleType('title_type').notNull().default('AUCUN'),
+  titleRef: text('title_ref'),
+  owner: text('owner'),
+  assignmentAct: text('assignment_act'),
+  easements: text('easements'),
+  titleProcedure: text('title_procedure'), // avancement de la procédure de sécurisation
+});
+
+/** Composants d'un bien (approche par composants). */
+export const assetComponents = pgTable('asset_components', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  label: text('label').notNull(),
+  value: money('value').notNull(),
+  durationYears: integer('duration_years').notNull(),
+  inServiceDate: date('in_service_date', { mode: 'string' }).notNull(),
+  replacedAt: date('replaced_at', { mode: 'string' }),
+});
+
+/** Occupation : services occupants et baux consentis à des tiers. */
+export const occupancies = pgTable('occupancies', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  kind: varchar('kind', { length: 16 }).notNull(), // AFFECTATION, BAIL, VACANT
+  occupant: text('occupant').notNull(),
+  orgUnitId: integer('org_unit_id').references(() => orgUnits.id),
+  area: integer('area').notNull(),
+  floors: text('floors'),
+  monthlyRent: money('monthly_rent').notNull().default(0),
+  startDate: date('start_date', { mode: 'string' }),
+  endDate: date('end_date', { mode: 'string' }),
+});
+
+/** Travaux, contentieux et contrôles réglementaires d'un bien immobilier. */
+export const propertyEvents = pgTable('property_events', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  kind: varchar('kind', { length: 16 }).notNull(), // TRAVAUX, CONTENTIEUX, CONTROLE
+  title: text('title').notNull(),
+  status: varchar('status', { length: 16 }).notNull(), // PROGRAMME, EN_COURS, CLOS, A_JOUR
+  amount: money('amount').notNull().default(0),
+  date: date('date', { mode: 'string' }),
+  nextDate: date('next_date', { mode: 'string' }),
+  notes: text('notes'),
+});
+
+export const vehicles = pgTable('vehicles', {
+  assetId: integer('asset_id').primaryKey().references(() => assets.id),
+  plate: varchar('plate', { length: 20 }).notNull(),
+  vin: varchar('vin', { length: 40 }),
+  energy: varchar('energy', { length: 12 }).notNull().default('GASOIL'),
+  fiscalPower: integer('fiscal_power'),
+  seats: integer('seats'),
+  mileage: integer('mileage').notNull().default(0),
+  driverId: integer('driver_id').references(() => users.id),
+  firstRegistration: date('first_registration', { mode: 'string' }),
+  serviceIntervalKm: integer('service_interval_km').notNull().default(10000),
+  lastServiceKm: integer('last_service_km').notNull().default(0),
+}, (t) => ({ plate: uniqueIndex('vehicles_plate_uq').on(t.plate) }));
+
+/** Échéances réglementaires : visite technique, vignette, carte grise, contrôle incendie… */
+export const deadlines = pgTable('deadlines', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  kind: varchar('kind', { length: 30 }).notNull(),
+  dueDate: date('due_date', { mode: 'string' }).notNull(),
+  doneAt: date('done_at', { mode: 'string' }),
+  notes: text('notes'),
+});
+
+export const fuelLogs = pgTable('fuel_logs', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  date: date('date', { mode: 'string' }).notNull(),
+  liters: integer('liters').notNull(),
+  amount: money('amount').notNull(),
+  mileage: integer('mileage').notNull(),
+  station: text('station'),
+  cardRef: text('card_ref'),
+  createdBy: integer('created_by').notNull().references(() => users.id),
+}, (t) => ({ veh: index('fuel_logs_asset_idx').on(t.assetId) }));
+
+export const missions = pgTable('missions', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  number: varchar('number', { length: 40 }).notNull().unique(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  driverId: integer('driver_id').references(() => users.id),
+  requesterId: integer('requester_id').notNull().references(() => users.id),
+  destination: text('destination').notNull(),
+  purpose: text('purpose').notNull(),
+  startAt: timestamp('start_at', { withTimezone: true }).notNull(),
+  endAt: timestamp('end_at', { withTimezone: true }).notNull(),
+  status: varchar('status', { length: 12 }).notNull().default('DEMANDE'), // DEMANDE, VALIDEE, EN_COURS, CLOTUREE, REJETEE, ANNULEE
+  startMileage: integer('start_mileage'),
+  endMileage: integer('end_mileage'),
+  createdAt: createdAt(),
+});
+
+export const vehicleIncidents = pgTable('vehicle_incidents', {
+  id: serial('id').primaryKey(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  kind: varchar('kind', { length: 12 }).notNull(), // SINISTRE, INFRACTION
+  date: date('date', { mode: 'string' }).notNull(),
+  driverId: integer('driver_id').references(() => users.id),
+  description: text('description').notNull(),
+  amount: money('amount').notNull().default(0),
+  insuranceClaim: text('insurance_claim'),
+  status: varchar('status', { length: 12 }).notNull().default('OUVERT'), // OUVERT, EXPERTISE, CLOS
+});
+
+export const contracts = pgTable('contracts', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  number: varchar('number', { length: 40 }).notNull().unique(),
+  kind: varchar('kind', { length: 16 }).notNull(), // MAINTENANCE, ASSURANCE, GARANTIE, LOCATION
+  title: text('title').notNull(),
+  provider: text('provider').notNull(),
+  startDate: date('start_date', { mode: 'string' }).notNull(),
+  endDate: date('end_date', { mode: 'string' }).notNull(),
+  annualAmount: money('annual_amount').notNull().default(0),
+  insuredValue: money('insured_value').notNull().default(0),
+  slaHours: integer('sla_hours'),
+  notes: text('notes'),
+  active: boolean('active').notNull().default(true),
+  createdAt: createdAt(),
+});
+export const contractAssets = pgTable('contract_assets', {
+  contractId: integer('contract_id').notNull().references(() => contracts.id, { onDelete: 'cascade' }),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+}, (t) => ({ pk: primaryKey({ columns: [t.contractId, t.assetId] }) }));
+
+export const workOrders = pgTable('work_orders', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  number: varchar('number', { length: 40 }).notNull().unique(),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  kind: varchar('kind', { length: 12 }).notNull(), // CORRECTIF, PREVENTIF
+  title: text('title').notNull(),
+  description: text('description'),
+  priority: varchar('priority', { length: 8 }).notNull().default('NORMALE'), // BASSE, NORMALE, HAUTE, URGENTE
+  status: varchar('status', { length: 16 }).notNull().default('A_PLANIFIER'), // A_PLANIFIER, PLANIFIE, EN_COURS, ATTENTE_PIECES, TERMINE, ANNULE
+  assignee: text('assignee'),
+  contractId: integer('contract_id').references(() => contracts.id),
+  requestId: integer('request_id'),
+  planId: integer('plan_id'),
+  plannedDate: date('planned_date', { mode: 'string' }),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  doneAt: timestamp('done_at', { withTimezone: true }),
+  laborCost: money('labor_cost').notNull().default(0),
+  partsCost: money('parts_cost').notNull().default(0),
+  report: text('report'),
+  previousStatus: assetStatus('previous_status'),
+  createdBy: integer('created_by').notNull().references(() => users.id),
+  createdAt: createdAt(),
+}, (t) => ({ asset: index('work_orders_asset_idx').on(t.assetId) }));
+
+/** Plans de maintenance préventive : par bien ou par catégorie. */
+export const maintenancePlans = pgTable('maintenance_plans', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  label: text('label').notNull(),
+  assetId: integer('asset_id').references(() => assets.id),
+  categoryId: integer('category_id').references(() => categories.id),
+  frequencyMonths: integer('frequency_months').notNull(),
+  nextDate: date('next_date', { mode: 'string' }).notNull(),
+  contractId: integer('contract_id').references(() => contracts.id),
+  assignee: text('assignee'),
+  active: boolean('active').notNull().default(true),
+});
+
+/** Opérations de valorisation : révision de durée, dépréciation, reprise de dépréciation. */
+export const revaluations = pgTable('revaluations', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  number: varchar('number', { length: 40 }).notNull().unique(),
+  kind: varchar('kind', { length: 20 }).notNull(), // REVISION_DUREE, DEPRECIATION, REPRISE_DEPRECIATION
+  title: text('title').notNull(),
+  reason: text('reason').notNull(),
+  effectiveDate: date('effective_date', { mode: 'string' }).notNull(),
+  newYears: integer('new_years'),
+  status: varchar('status', { length: 12 }).notNull().default('BROUILLON'), // BROUILLON, EN_COURS, APPLIQUE, REJETE
+  createdBy: integer('created_by').notNull().references(() => users.id),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  createdAt: createdAt(),
+});
+export const revaluationItems = pgTable('revaluation_items', {
+  revaluationId: integer('revaluation_id').notNull().references(() => revaluations.id, { onDelete: 'cascade' }),
+  assetId: integer('asset_id').notNull().references(() => assets.id),
+  amount: money('amount').notNull().default(0), // montant de dépréciation ou de reprise
+  annualBefore: money('annual_before').notNull().default(0),
+  annualAfter: money('annual_after').notNull().default(0),
+}, (t) => ({ pk: primaryKey({ columns: [t.revaluationId, t.assetId] }) }));
+
+/** Soldes de la comptabilité générale importés de l'ERP (rapprochement). */
+export const ledgerBalances = pgTable('ledger_balances', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  date: date('date', { mode: 'string' }).notNull(),
+  account: varchar('account', { length: 12 }).notNull(),
+  label: text('label'),
+  balance: money('balance').notNull(), // solde débiteur positif ; créditeur (28x) en valeur absolue
+  importedBy: integer('imported_by').notNull().references(() => users.id),
+  importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: uniqueIndex('ledger_balances_uq').on(t.entityId, t.date, t.account) }));
+
+/** Explications des écarts de rapprochement. */
+export const reconciliationNotes = pgTable('reconciliation_notes', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  date: date('date', { mode: 'string' }).notNull(),
+  account: varchar('account', { length: 12 }).notNull(),
+  amount: money('amount').notNull(),
+  label: text('label').notNull(),
+  status: varchar('status', { length: 12 }).notNull().default('A_CORRIGER'), // A_CORRIGER, CORRIGE, JUSTIFIE
+  createdBy: integer('created_by').notNull().references(() => users.id),
+  createdAt: createdAt(),
+});
+
+export const fiscalYears = pgTable('fiscal_years', {
+  entityId: integer('entity_id').notNull(),
+  year: integer('year').notNull(),
+  status: varchar('status', { length: 10 }).notNull().default('OUVERT'), // OUVERT, CLOTURE
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+  closedBy: integer('closed_by'),
+  summary: jsonb('summary').$type<Record<string, unknown>>(),
+}, (t) => ({ pk: primaryKey({ columns: [t.entityId, t.year] }) }));
+
+/** Gestion électronique des documents : pièces rattachées à un objet métier. */
+export const documents = pgTable('documents', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  objectType: varchar('object_type', { length: 20 }).notNull(), // BIEN, RECEPTION, MOUVEMENT, REFORME, CONTRAT, MISSION, OT, INVENTAIRE
+  objectId: integer('object_id').notNull(),
+  category: varchar('category', { length: 30 }).notNull(), // FACTURE, PV, TITRE, CONTRAT, PHOTO, DECHARGE, AUTRE
+  filename: text('filename').notNull(),
+  mime: varchar('mime', { length: 120 }).notNull(),
+  size: integer('size').notNull(),
+  sha256: varchar('sha256', { length: 64 }).notNull(),
+  storageKey: text('storage_key').notNull(),
+  uploadedBy: integer('uploaded_by').notNull().references(() => users.id),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ obj: index('documents_obj_idx').on(t.objectType, t.objectId) }));

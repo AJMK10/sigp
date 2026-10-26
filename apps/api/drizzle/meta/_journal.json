@@ -15,6 +15,13 @@
       "when": 1793011760052,
       "tag": "0001_audit_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793014098356,
+      "tag": "0002_lot2",
+      "breakpoints": true
     }
   ]
 }

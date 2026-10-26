@@ -219,3 +219,127 @@ describe('journal d\'audit et états', () => {
     expect(d.history).toHaveLength(5);
   });
 });
+
+// ------------------------------------------------------------------ Lot 2
+describe('parc automobile', () => {
+  it('valide un ordre de mission, refuse les chevauchements et contrôle le kilométrage', async () => {
+    const holder = await as('traore.m'), mgr = await as('yao.k');
+    const { rows: [v] } = await pool.query(`select v.asset_id, v.mileage from vehicles v join assets a on a.id = v.asset_id where a.status = 'EN_SERVICE' and a.category_id in (select id from categories where prefix = 'VEH')
+      and not exists (select 1 from missions m where m.asset_id = v.asset_id and m.status = 'EN_COURS') limit 1`);
+    const m1 = await holder.post('/missions', { assetId: v.asset_id, destination: 'Bouaké', purpose: 'Mission de contrôle', startAt: '2027-02-01T08:00', endAt: '2027-02-02T18:00' });
+    expect(m1.status).toBe(201);
+    const m2 = await holder.post('/missions', { assetId: v.asset_id, destination: 'Daloa', purpose: 'Autre mission', startAt: '2027-02-02T08:00', endAt: '2027-02-03T18:00' });
+    expect((await mgr.post(`/missions/${m1.body.id}/decision`, { approve: true })).status).toBe(201);
+    expect((await mgr.post(`/missions/${m2.body.id}/decision`, { approve: true })).status).toBe(400); // créneau déjà pris
+    expect((await mgr.post(`/missions/${m2.body.id}/decision`, { approve: false })).status).toBe(400); // motif obligatoire
+    expect((await holder.post(`/missions/${m1.body.id}/depart`, { startMileage: v.mileage - 10 })).status).toBe(400);
+    expect((await holder.post(`/missions/${m1.body.id}/depart`, { startMileage: v.mileage })).status).toBe(201);
+    expect((await holder.post(`/missions/${m1.body.id}/retour`, { endMileage: v.mileage + 712 })).status).toBe(201);
+    const { rows: [after] } = await pool.query('select mileage from vehicles where asset_id = $1', [v.asset_id]);
+    expect(after.mileage).toBe(v.mileage + 712);
+    const fl = await mgr.get('/flotte');
+    expect(fl.status).toBe(200);
+    expect(fl.body.items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('maintenance', () => {
+  it('immobilise le bien pendant l\'intervention et exige un compte rendu pour clore', async () => {
+    const mgr = await as('yao.k');
+    const { rows: [a] } = await pool.query(`select id from assets where status = 'EN_SERVICE' and category_id in (select id from categories where prefix = 'CLI') limit 1`);
+    const w = await mgr.post('/maintenance/ot', { assetId: a.id, kind: 'CORRECTIF', title: 'Fuite de gaz' });
+    expect(w.status).toBe(201);
+    expect((await mgr.patch(`/maintenance/ot/${w.body.id}`, { status: 'TERMINE' })).status).toBe(400); // A_PLANIFIER -> TERMINE interdit
+    expect((await mgr.patch(`/maintenance/ot/${w.body.id}`, { status: 'EN_COURS' })).status).toBe(200);
+    expect((await pool.query('select status from assets where id = $1', [a.id])).rows[0].status).toBe('EN_MAINTENANCE');
+    expect((await mgr.patch(`/maintenance/ot/${w.body.id}`, { status: 'TERMINE' })).status).toBe(400); // compte rendu manquant
+    expect((await mgr.patch(`/maintenance/ot/${w.body.id}`, { status: 'TERMINE', report: 'Recharge effectuée', partsCost: 45000 })).status).toBe(200);
+    expect((await pool.query('select status from assets where id = $1', [a.id])).rows[0].status).toBe('EN_SERVICE');
+    expect((await (await as('traore.m')).post('/maintenance/ot', { assetId: a.id, kind: 'CORRECTIF', title: 'Test' })).status).toBe(403);
+  });
+});
+
+describe('immobilier et contrats', () => {
+  it('tient les occupations et refuse un bail sans loyer', async () => {
+    const mgr = await as('yao.k');
+    const list = await mgr.get('/immobilier');
+    expect(list.status).toBe(200);
+    const tour = list.body.items.find((x: { code: string }) => x.code === 'MEF-IMM-1998-000004');
+    expect(tour).toBeTruthy();
+    expect((await mgr.post(`/immobilier/${tour.id}/occupations`, { kind: 'BAIL', occupant: 'Locataire', area: 50 })).status).toBe(400);
+    const d = await mgr.get(`/immobilier/${tour.id}`);
+    expect(d.body.components.reduce((s: number, c: { value: number; replacedAt: string | null }) => s + (c.replacedAt ? 0 : c.value), 0)).toBeGreaterThan(2_000_000_000);
+    const c = await mgr.get('/contrats');
+    expect(c.status).toBe(200);
+    expect(c.body.items.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('révisions et dépréciations', () => {
+  it('applique un changement de durée de façon prospective après validation', async () => {
+    const { rows: [r] } = await pool.query(`select id from revaluations where kind = 'REVISION_DUREE' and status = 'EN_COURS'`);
+    const { rows: before } = await pool.query(`select a.id from revaluation_items i join assets a on a.id = i.asset_id where i.revaluation_id = $1`, [r.id]);
+    await decideAll('REVISION', r.id);
+    const { rows } = await pool.query(`select depr_years, revised_at, previous_years from assets where id = any($1)`, [before.map((x) => x.id)]);
+    expect(rows.every((x) => x.depr_years === 12 && x.previous_years === 10 && x.revised_at)).toBe(true);
+  });
+  it('plafonne la dépréciation à la VNC et passe une écriture équilibrée', async () => {
+    const fin = await as('coulibaly.n');
+    const { rows: [a] } = await pool.query(`select id from assets where status = 'EN_SERVICE' and category_id in (select id from categories where prefix = 'INF') and acquisition_date > '2025-01-01' limit 1`);
+    expect((await fin.post('/revisions', { kind: 'DEPRECIATION', title: 'Test', reason: 'Perte de valeur constatée par expertise', effectiveDate: '2026-10-20', items: [{ assetId: a.id, amount: 999_000_000 }] })).status).toBe(400);
+    const r = await fin.post('/revisions', { kind: 'DEPRECIATION', title: 'Test', reason: 'Perte de valeur constatée par expertise', effectiveDate: '2026-10-20', items: [{ assetId: a.id, amount: 50_000 }] });
+    expect(r.status).toBe(201);
+    await fin.post(`/revisions/${r.body.id}/soumettre`);
+    expect((await (await as('coulibaly.n')).get('/validations')).status).toBe(200);
+    // le demandeur ne valide pas sa propre opération : la première étape revient à un autre agent des finances, ici absent → validation directe en base interdite
+    const { rows: [ap] } = await pool.query(`select id from approvals where object_type = 'REVISION' and object_id = $1 and status = 'EN_COURS'`, [r.body.id]);
+    expect((await fin.post(`/validations/${ap.id}/decision`, { approve: true })).status).toBe(403);
+  });
+});
+
+describe('rapprochement et clôture d\'exercice', () => {
+  it('rapproche registre et balance, et refuse une clôture prématurée', async () => {
+    const fin = await as('coulibaly.n');
+    const rp = await fin.get('/cloture/rapprochement?date=2026-09-30');
+    expect(rp.status).toBe(200);
+    expect(rp.body.lines.find((l: { account: string }) => l.account === '2442').unexplained).toBe(0);
+    expect(rp.body.lines.find((l: { account: string }) => l.account === '2844').unexplained).toBe(312_450);
+    const chk = await fin.get('/cloture/exercice/2026');
+    expect(chk.body.ready).toBe(false);
+    expect((await fin.post('/cloture/exercice/2026')).status).toBe(400);
+  });
+  it('interdit de dater une pièce dans un exercice clôturé', async () => {
+    const { rows: [c] } = await pool.query(`select id from categories where prefix = 'MOB'`);
+    const r = await (await as('yao.k')).post('/receptions', { entryMode: 'ACHAT', supplier: 'Test', deliveryDate: '2025-12-15', lines: [{ designation: 'Chaise', categoryId: c.id, qtyOrdered: 1, qtyDelivered: 1, qtyAccepted: 1, unitValue: 200000 }] });
+    expect(r.status).toBe(400);
+    expect(r.body.message).toMatch(/clôturé/);
+  });
+});
+
+describe('GED, comptabilité-matières et renouvellement', () => {
+  it('dépose un document avec empreinte et le restitue intact', async () => {
+    const mgr = await as('yao.k');
+    const { rows: [a] } = await pool.query(`select id from assets limit 1`);
+    const up = await request(app.getHttpServer()).post('/api/documents').set('Authorization', `Bearer ${tokens['yao.k']}`)
+      .field('objectType', 'BIEN').field('objectId', String(a.id)).field('category', 'FACTURE').attach('file', Buffer.from('%PDF-1.4 test'), { filename: 'facture.pdf', contentType: 'application/pdf' });
+    expect(up.status).toBe(201);
+    expect(up.body.sha256).toHaveLength(64);
+    const bad = await request(app.getHttpServer()).post('/api/documents').set('Authorization', `Bearer ${tokens['yao.k']}`)
+      .field('objectType', 'BIEN').field('objectId', String(a.id)).field('category', 'AUTRE').attach('file', Buffer.from('MZ'), { filename: 'x.exe', contentType: 'application/x-msdownload' });
+    expect(bad.status).toBe(400);
+    const dl = await mgr.get(`/documents/${up.body.id}/fichier`).buffer(true).parse((res, cb) => { const b: Buffer[] = []; res.on('data', (c: Buffer) => b.push(c)); res.on('end', () => cb(null, Buffer.concat(b))); });
+    expect((dl.body as Buffer).toString()).toBe('%PDF-1.4 test');
+    expect((await mgr.get(`/documents/${up.body.id}/verifier`)).body.ok).toBe(true);
+  });
+  it('équilibre le grand livre des matières et chiffre le plan de renouvellement', async () => {
+    const k = await as('kone.d');
+    const g = await k.get('/comptabilite-matieres?year=2026');
+    expect(g.status).toBe(200);
+    for (const l of g.body.ledger) { expect(l.q1).toBe(l.q0 + l.qi - l.qo); expect(l.v1).toBe(l.v0 + l.vi - l.vo); }
+    expect((await k.get('/comptabilite-matieres/compte-gestion.pdf?year=2026')).status).toBe(200);
+    const p = await (await as('konan.a')).get('/renouvellement?horizon=5&budget=500000000');
+    expect(p.status).toBe(200);
+    expect(p.body.plan).toHaveLength(5);
+    for (const y of p.body.plan) expect(y.funded).toBeLessThanOrEqual(500_000_000);
+  });
+});

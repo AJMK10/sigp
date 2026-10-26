@@ -39,3 +39,11 @@ export async function download(path: string, filename: string, open = false) {
   else { const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); }
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+/** Envoi multipart (pièces jointes de la GED). */
+export async function upload<T = unknown>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token.get() ?? ''}` }, body: form });
+  if (res.status === 401) onUnauthorized();
+  if (!res.ok) { let m = `Erreur ${res.status}`; try { const j = await res.json(); m = Array.isArray(j.message) ? j.message.join(' ; ') : j.message ?? m; } catch { /* */ } throw new ApiError(res.status, m); }
+  return res.json() as Promise<T>;
+}
