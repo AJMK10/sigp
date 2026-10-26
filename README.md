@@ -1,4 +1,4 @@
-# SIGP · Système Intégré de Gestion du Patrimoine (lots 1 et 2)
+# SIGP · Système Intégré de Gestion du Patrimoine
 
 Application web de gestion du patrimoine pour les entreprises et les administrations publiques :
 entrée en patrimoine, immatriculation, mouvements, inventaire physique, amortissements, écritures comptables,
@@ -25,7 +25,7 @@ Pour un environnement réel, lancez avec `SEED_DEMO=0` et un `JWT_SECRET` fort.
 | kone.d@sigp.ci | Comptable-matières | Visa de la réception des climatiseurs, écarts d'inventaire, comptabilité-matières (compte de gestion) |
 | coulibaly.n@sigp.ci | Direction financière | Dotations d'octobre, écritures, révision de durée des groupes électrogènes à valider, rapprochement au 30/09, clôture d'exercice |
 | diallo.f@sigp.ci | Contrôleur financier | Avis du contrôle financier, journal d'audit |
-| bamba.s@sigp.ci | Chef d'équipe d'inventaire | Comptage à l'aveugle d'une zone |
+| bamba.s@sigp.ci | Chef d'équipe d'inventaire | Comptage à l'aveugle d'une zone, sur le web ou avec l'application mobile |
 | traore.m@sigp.ci | Détenteur | Portail : mes biens, demandes, attestation de détention ; demande de véhicule (ordre de mission) |
 | admin@sigp.ci | Administrateur | Paramétrage, circuits de validation (réception déjà personnalisée), utilisateurs et droits |
 
@@ -56,6 +56,7 @@ apps/
     drizzle/           migrations SQL versionnées (dont les triggers d'inaltérabilité)
     test/              tests de bout en bout (parcours métier complets)
   web/    React 18 · TypeScript · Vite · TanStack Query · React Router
+  mobile/ Expo SDK 52 (React Native) · application d'inventaire hors ligne (projet autonome, voir apps/mobile/README.md)
 deploy/   images Docker (API, nginx) ; docker-compose.yml à la racine
 ```
 
@@ -81,6 +82,7 @@ deploy/   images Docker (API, nginx) ; docker-compose.yml à la racine
 | cmat / renewal | Comptabilité-matières (livre-journal, grand livre, compte de gestion) ; plan pluriannuel de renouvellement |
 | documents | GED : pièces jointes avec empreinte SHA-256, téléchargement contrôlé, vérification d'intégrité |
 | workflow / circuits | Circuits de validation paramétrables par entité (étapes, valideur, délai, seuil de montant), circuits réglementaires intégrés par défaut |
+| mobile | API de l'application d'inventaire : paquet hors ligne, synchronisation idempotente, photos, clôture de zone signée |
 | report-builder | Générateur d'états : sources en liste blanche, colonnes, filtres, regroupements, totaux ; états enregistrés et partagés ; export Excel, CSV, PDF |
 
 ### Choix techniques notables
@@ -106,6 +108,8 @@ Paramétrage avancé livré : éditeur de circuits de validation (une modificati
 ensuite ; au moins une étape systématique est exigée ; un valideur nommé ne peut pas être l'auteur de la pièce) et
 générateur d'états personnalisés (seuls les champs du catalogue sont interrogeables, les droits s'appliquent par source).
 
-Reste à réaliser : application mobile d'inventaire hors ligne (React Native).
+Application mobile livrée (`apps/mobile`) : inventaire physique hors ligne sur Android et iOS, lecture des étiquettes,
+fiche constat avec photos, synchronisation sans doublon, clôture de zone signée. Construction des installables avec EAS
+(`eas build -p android --profile preview` produit un APK de distribution interne).
 
 Les pièces jointes sont stockées dans `STORAGE_DIR` (par défaut `apps/api/storage`) : prévoyez un volume persistant.

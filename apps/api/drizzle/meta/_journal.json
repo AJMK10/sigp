@@ -29,6 +29,13 @@
       "when": 1793020311482,
       "tag": "0003_params_avances",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793031251287,
+      "tag": "0004_mobile",
+      "breakpoints": true
     }
   ]
 }

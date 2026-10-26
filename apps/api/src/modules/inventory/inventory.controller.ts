@@ -128,32 +128,8 @@ export class InventoryController {
   /** Constat d'un bien (scan ou saisie). */
   @Post(':id/constats') @Perm('inventory.count', 'inventory.manage')
   async count(@CurrentCtx() ctx: Ctx, @Param('id') id: string, @Body() body: unknown) {
-    const b = parse(z.object({ zoneId: zId, code: z.string().min(3).max(60), condition: z.enum(COND), locationId: zId.nullable().optional(), comment: z.string().max(500).optional() }), body);
-    return this.db.transaction(async (tx) => {
-      const c = await this.campaign(tx, ctx, id);
-      if (c.status !== 'EN_COURS') throw new BadRequestException("La campagne n'est pas ouverte au comptage");
-      const [z] = await tx.select().from(inventoryZones).where(and(eq(inventoryZones.id, b.zoneId), eq(inventoryZones.campaignId, c.id)));
-      if (!z) throw new NotFoundException('Zone introuvable');
-      if (z.status === 'TERMINEE') throw new BadRequestException('Zone déjà clôturée');
-      if (['MAUVAIS', 'HORS_USAGE'].includes(b.condition) && !b.comment) throw new BadRequestException('Commentaire obligatoire pour un bien en mauvais état ou hors d\'usage');
-      const code = b.code.trim().toUpperCase();
-      const [a] = await tx.select().from(assets).where(and(eq(assets.entityId, ctx.user.entityId), eq(assets.code, code)));
-      if (a) {
-        const [dup] = await tx.select({ id: inventoryCounts.id, zoneId: inventoryCounts.zoneId }).from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.assetId, a.id)));
-        if (dup && dup.zoneId !== z.id) throw new ConflictException(`${code} a déjà été constaté dans une autre zone : signalé au chef d'équipe`);
-        if (dup) {
-          await tx.update(inventoryCounts).set({ condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? null, countedBy: ctx.user.id, countedAt: new Date() }).where(eq(inventoryCounts.id, dup.id));
-          return { status: 'MIS_A_JOUR', code, designation: a.designation };
-        }
-      } else {
-        const [dup] = await tx.select({ id: inventoryCounts.id }).from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.scannedCode, code), isNull(inventoryCounts.assetId)));
-        if (dup) return { status: 'DEJA_SIGNALE', code, designation: 'Code non référencé' };
-      }
-      // Sans local précis, le bien est réputé trouvé dans sa zone (localisation non contestée).
-      await tx.insert(inventoryCounts).values({ campaignId: c.id, zoneId: z.id, assetId: a?.id ?? null, scannedCode: code, condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? null, countedBy: ctx.user.id });
-      if (z.status === 'A_FAIRE') await tx.update(inventoryZones).set({ status: 'EN_COURS' }).where(eq(inventoryZones.id, z.id));
-      return a ? { status: 'RECONNU', code, designation: a.designation } : { status: 'EXCEDENT', code, designation: 'Code non référencé : sera traité comme excédent' };
-    });
+    const b = parse(countSchema, body);
+    return this.db.transaction(async (tx) => recordCount(tx, ctx, await this.campaign(tx, ctx, id), { ...b, source: 'WEB' }));
   }
 
   @Post(':id/zones/:zoneId/terminer') @Perm('inventory.count', 'inventory.manage')
@@ -278,4 +254,46 @@ export class InventoryController {
     const c = await this.campaign(this.db, ctx, id);
     return this.db.select({ a: attestations, holder: users.fullName }).from(attestations).innerJoin(users, eq(users.id, attestations.holderId)).where(eq(attestations.campaignId, c.id));
   }
+}
+
+export const countSchema = z.object({ zoneId: zId, code: z.string().min(3).max(60), condition: z.enum(COND), locationId: zId.nullable().optional(), comment: z.string().max(500).optional() });
+export interface CountInput extends z.infer<typeof countSchema> { source: 'WEB' | 'MOBILE'; clientId?: string; countedAt?: Date; lat?: string | null; lng?: string | null }
+export type CountStatus = 'RECONNU' | 'MIS_A_JOUR' | 'EXCEDENT' | 'DEJA_SIGNALE' | 'DEJA_RECU';
+
+/**
+ * Règles d'un constat, communes au web et à l'application mobile : campagne ouverte, zone non clôturée,
+ * commentaire obligatoire pour un mauvais état, un bien constaté une seule fois par campagne.
+ */
+export async function recordCount(tx: Tx, ctx: Ctx, c: typeof inventoryCampaigns.$inferSelect, b: CountInput): Promise<{ status: CountStatus; code: string; designation: string; countId?: number; assetId?: number | null }> {
+  if (b.clientId) {
+    const [prev] = await tx.select({ id: inventoryCounts.id, assetId: inventoryCounts.assetId, code: inventoryCounts.scannedCode }).from(inventoryCounts).where(eq(inventoryCounts.clientId, b.clientId));
+    if (prev) return { status: 'DEJA_RECU', code: prev.code, designation: '', countId: prev.id, assetId: prev.assetId };
+  }
+  if (c.status !== 'EN_COURS') throw new BadRequestException("La campagne n'est pas ouverte au comptage");
+  const [z] = await tx.select().from(inventoryZones).where(and(eq(inventoryZones.id, b.zoneId), eq(inventoryZones.campaignId, c.id)));
+  if (!z) throw new NotFoundException('Zone introuvable');
+  if (z.status === 'TERMINEE') throw new BadRequestException('Zone déjà clôturée');
+  if (['MAUVAIS', 'HORS_USAGE'].includes(b.condition) && !b.comment) throw new BadRequestException('Commentaire obligatoire pour un bien en mauvais état ou hors d\'usage');
+  const code = b.code.trim().toUpperCase();
+  const at = b.countedAt ?? new Date();
+  const extra = { clientId: b.clientId ?? null, source: b.source, lat: b.lat ?? null, lng: b.lng ?? null };
+  const [a] = await tx.select().from(assets).where(and(eq(assets.entityId, ctx.user.entityId), eq(assets.code, code)));
+  if (a) {
+    const [dup] = await tx.select({ id: inventoryCounts.id, zoneId: inventoryCounts.zoneId, countedAt: inventoryCounts.countedAt }).from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.assetId, a.id)));
+    if (dup && dup.zoneId !== z.id) throw new ConflictException(`${code} a déjà été constaté dans une autre zone : signalé au chef d'équipe`);
+    if (dup) {
+      // Le constat le plus récent l'emporte (un appareil resté hors ligne peut transmettre un constat plus ancien).
+      if (dup.countedAt > at) return { status: 'MIS_A_JOUR', code, designation: a.designation, countId: dup.id, assetId: a.id };
+      await tx.update(inventoryCounts).set({ condition: b.condition, comment: b.comment ?? null, locationId: b.locationId ?? null, countedBy: ctx.user.id, countedAt: at, ...extra }).where(eq(inventoryCounts.id, dup.id));
+      return { status: 'MIS_A_JOUR', code, designation: a.designation, countId: dup.id, assetId: a.id };
+    }
+  } else {
+    const [dup] = await tx.select({ id: inventoryCounts.id }).from(inventoryCounts).where(and(eq(inventoryCounts.campaignId, c.id), eq(inventoryCounts.scannedCode, code), isNull(inventoryCounts.assetId)));
+    if (dup) return { status: 'DEJA_SIGNALE', code, designation: 'Code non référencé', countId: dup.id, assetId: null };
+  }
+  // Sans local précis, le bien est réputé trouvé dans sa zone (localisation non contestée).
+  const [row] = await tx.insert(inventoryCounts).values({ campaignId: c.id, zoneId: z.id, assetId: a?.id ?? null, scannedCode: code, condition: b.condition, comment: b.comment ?? null,
+    locationId: b.locationId ?? null, countedBy: ctx.user.id, countedAt: at, ...extra }).returning({ id: inventoryCounts.id });
+  if (z.status === 'A_FAIRE') await tx.update(inventoryZones).set({ status: 'EN_COURS' }).where(eq(inventoryZones.id, z.id));
+  return a ? { status: 'RECONNU', code, designation: a.designation, countId: row.id, assetId: a.id } : { status: 'EXCEDENT', code, designation: 'Code non référencé : sera traité comme excédent', countId: row.id, assetId: null };
 }

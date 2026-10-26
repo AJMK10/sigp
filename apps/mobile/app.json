@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "SIGP Inventaire",
+    "slug": "sigp-inventaire",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F4F6F9",
+    "primaryColor": "#13294B",
+    "scheme": "sigp",
+    "ios": {
+      "bundleIdentifier": "ci.sigp.inventaire",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "La caméra lit les étiquettes des biens et photographie les constats.",
+        "NSLocationWhenInUseUsageDescription": "La position horodate chaque constat d'inventaire."
+      }
+    },
+    "android": {
+      "package": "ci.sigp.inventaire",
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+      "adaptiveIcon": { "backgroundColor": "#13294B" }
+    },
+    "web": { "bundler": "metro", "output": "single", "name": "SIGP Inventaire", "themeColor": "#13294B" },
+    "plugins": [
+      ["expo-camera", { "cameraPermission": "La caméra lit les étiquettes des biens et photographie les constats." }],
+      ["expo-location", { "locationWhenInUsePermission": "La position horodate chaque constat d'inventaire." }],
+      ["expo-image-picker", { "cameraPermission": "La caméra photographie les biens constatés." }]
+    ],
+    "extra": { "defaultApiUrl": "" }
+  }
+}

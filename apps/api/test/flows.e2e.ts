@@ -407,3 +407,61 @@ describe("générateur d'états", () => {
     expect((await (await as('traore.m')).get('/rapports/sources')).status).toBe(403);
   });
 });
+
+// ------------------------------------------------------------------ Application mobile
+describe('application mobile d\'inventaire hors ligne', () => {
+  it('télécharge le paquet des zones de l\'équipe, sans liste attendue en comptage à l\'aveugle', async () => {
+    const p = await (await as('bamba.s')).get('/mobile/paquet');
+    expect(p.status).toBe(200);
+    expect(p.body.campaigns.length).toBeGreaterThan(0);
+    const c = p.body.campaigns[0];
+    expect(c.blind).toBe(true);
+    expect(p.body.expected[c.zones[0].id]).toBeUndefined();
+    expect(p.body.assets.length).toBeGreaterThan(0);
+    expect(c.zones[0].locations.length).toBeGreaterThan(0);
+    expect((await (await as('traore.m')).get('/mobile/paquet')).status).toBe(403);
+  });
+  it('synchronise sans doublon, traite chaque constat séparément et rattache les photos', async () => {
+    const b = await as('bamba.s');
+    const { rows: [z] } = await pool.query(`select z.id, z.campaign_id from inventory_zones z join inventory_campaigns c on c.id = z.campaign_id
+      join users u on u.id = z.leader_id where c.status = 'EN_COURS' and z.status <> 'TERMINEE' and u.email = 'bamba.s@sigp.ci' order by z.id limit 1`);
+    const { rows: free } = await pool.query(`select a.code from inventory_expected e join assets a on a.id = e.asset_id where e.zone_id = $1
+      and not exists (select 1 from inventory_counts k where k.campaign_id = $2 and k.asset_id = a.id) limit 2`, [z.id, z.campaign_id]);
+    expect(free.length).toBe(2);
+    const at = new Date(Date.now() - 3600_000).toISOString();
+    const batch = [
+      { clientId: 'test-mob-0001', campaignId: z.campaign_id, zoneId: z.id, code: free[0].code.toLowerCase(), condition: 'BON', countedAt: at, lat: 5.32, lng: -4.02 },
+      { clientId: 'test-mob-0002', campaignId: z.campaign_id, zoneId: z.id, code: free[1].code, condition: 'MAUVAIS', countedAt: at }, // commentaire manquant
+      { clientId: 'test-mob-0003', campaignId: z.campaign_id, zoneId: z.id, code: 'ETQ-INCONNUE-99', condition: 'BON', countedAt: at },
+    ];
+    const r1 = await b.post('/mobile/synchroniser', { deviceId: 'test-device', counts: batch });
+    expect(r1.status).toBe(201);
+    expect(r1.body.results.map((x: { ok: boolean }) => x.ok)).toEqual([true, false, true]);
+    expect(r1.body.results[1].retry).toBe(false);
+    expect(r1.body.results[2].status).toBe('EXCEDENT');
+    // Renvoi du même lot après une coupure : aucun doublon.
+    const r2 = await b.post('/mobile/synchroniser', { deviceId: 'test-device', counts: [batch[0], batch[2]] });
+    expect(r2.body.results.map((x: { status: string }) => x.status)).toEqual(['DEJA_RECU', 'DEJA_RECU']);
+    const { rows: [n] } = await pool.query(`select count(*)::int n from inventory_counts where client_id like 'test-mob-%'`);
+    expect(n.n).toBe(2);
+    const { rows: [k] } = await pool.query(`select source, lat from inventory_counts where client_id = 'test-mob-0001'`);
+    expect(k).toEqual({ source: 'MOBILE', lat: '5.32' });
+    const png = Buffer.from('89504e470d0a1a0a', 'hex');
+    const ph = await request(app.getHttpServer()).post('/api/mobile/photos').set('Authorization', `Bearer ${tokens['bamba.s']}`)
+      .field('clientId', 'test-mob-0001').field('photoId', 'photo-1').attach('file', png, { filename: 'p1.jpg', contentType: 'image/jpeg' });
+    expect(ph.status).toBe(201);
+    const again = await request(app.getHttpServer()).post('/api/mobile/photos').set('Authorization', `Bearer ${tokens['bamba.s']}`)
+      .field('clientId', 'test-mob-0001').field('photoId', 'photo-1').attach('file', png, { filename: 'p1.jpg', contentType: 'image/jpeg' });
+    expect(again.body.duplicate).toBe(true);
+  });
+  it('clôture la zone avec signature, seulement quand tout est synchronisé', async () => {
+    const b = await as('bamba.s');
+    const { rows: [z] } = await pool.query(`select z.id from inventory_zones z join users u on u.id = z.leader_id where z.status <> 'TERMINEE' and u.email = 'bamba.s@sigp.ci' order by z.id desc limit 1`);
+    const sig = 'data:image/png;base64,' + Buffer.from('89504e470d0a1a0a0000', 'hex').toString('base64');
+    expect((await b.post(`/mobile/zones/${z.id}/cloturer`, { signature: sig, pending: 3 })).status).toBe(400);
+    expect((await b.post(`/mobile/zones/${z.id}/cloturer`, { signature: sig, pending: 0 })).status).toBe(201);
+    expect((await pool.query('select status from inventory_zones where id = $1', [z.id])).rows[0].status).toBe('TERMINEE');
+    const { rows: [d] } = await pool.query(`select category from documents where filename like 'signature-zone-${z.id}-%'`);
+    expect(d.category).toBe('PV');
+  });
+});

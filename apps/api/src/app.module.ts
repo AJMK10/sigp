@@ -32,6 +32,7 @@ import { CmatController } from './modules/cmat/cmat.controller';
 import { RenewalController } from './modules/renewal/renewal.controller';
 import { CircuitsController } from './modules/workflow/circuits.controller';
 import { ReportBuilderController } from './modules/report-builder/report-builder.controller';
+import { MobileController } from './modules/mobile/mobile.controller';
 import { HealthController } from './health.controller';
 
 /**
@@ -43,7 +44,7 @@ import { HealthController } from './health.controller';
   controllers: [HealthController, AuthController, WorkflowController, ReferentialsController, AssetsController, LabelsController, JournalController, ReceptionsController,
     MovementsController, InventoryController, DepreciationController, DisposalsController, DashboardController, PortalController, NotificationsController, AuditController, ReportsController,
     PropertyController, FleetController, MissionsController, MaintenanceController, ContractsController, RevaluationController, ClosingController,
-    DocumentsController, CmatController, RenewalController, CircuitsController, ReportBuilderController],
+    DocumentsController, CmatController, RenewalController, CircuitsController, ReportBuilderController, MobileController],
   providers: [AuditService, NumberingService, NotifyService, WorkflowService, JournalService, { provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

@@ -266,7 +266,12 @@ export const inventoryCounts = pgTable('inventory_counts', {
   comment: text('comment'),
   countedBy: integer('counted_by').notNull().references(() => users.id),
   countedAt: timestamp('counted_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({ camp: index('inv_counts_campaign_idx').on(t.campaignId) }));
+  /** Identifiant généré par l'appareil : un constat renvoyé après une coupure n'est jamais enregistré deux fois. */
+  clientId: varchar('client_id', { length: 40 }),
+  source: varchar('source', { length: 8 }).notNull().default('WEB'), // WEB, MOBILE
+  lat: text('lat'),
+  lng: text('lng'),
+}, (t) => ({ camp: index('inv_counts_campaign_idx').on(t.campaignId), client: uniqueIndex('inv_counts_client_uq').on(t.clientId) }));
 
 export const inventoryGaps = pgTable('inventory_gaps', {
   id: serial('id').primaryKey(),

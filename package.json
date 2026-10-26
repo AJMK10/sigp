@@ -2,7 +2,7 @@
   "name": "sigp",
   "private": true,
   "version": "1.0.0",
-  "description": "SIGP — Système Intégré de Gestion du Patrimoine (lot 1)",
+  "description": "SIGP — Système Intégré de Gestion du Patrimoine",
   "workspaces": [
     "apps/api",
     "apps/web"

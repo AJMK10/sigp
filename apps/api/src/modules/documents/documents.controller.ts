@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'crypto';
 import { existsSync, mkdirSync, writeFileSync, createReadStream } from 'fs';
 import path from 'path';
 import { and, desc, eq, ilike, sql } from 'drizzle-orm';
-import { DB } from '../../db/client';
+import { DB, Tx } from '../../db/client';
 import { documents, users } from '../../db/schema';
 import { InjectDb } from '../../common/db.module';
 import { CurrentCtx, Ctx, Perm } from '../../common/context';
@@ -17,6 +17,21 @@ const MAX = 20 * 1024 * 1024;
 const ALLOWED = /^(application\/pdf|image\/(png|jpeg|webp)|application\/vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|spreadsheetml\.sheet)|text\/csv)$/;
 export const DOC_CATEGORIES: Record<string, string> = { FACTURE: 'Facture', PV: 'Procès-verbal', TITRE: 'Titre ou acte', CONTRAT: 'Contrat ou police', PHOTO: 'Photo', DECHARGE: 'Décharge signée', EXPERTISE: "Rapport d'expertise", AUTRE: 'Autre' };
 const OBJECTS = ['BIEN', 'RECEPTION', 'MOUVEMENT', 'REFORME', 'CONTRAT', 'MISSION', 'OT', 'INVENTAIRE', 'REVISION'] as const;
+
+/** Enregistre un fichier (stockage, empreinte SHA-256, trace d'audit) ; utilisé par la GED et l'application mobile. */
+export async function storeDocument(tx: Tx, audit: AuditService, ctx: Ctx, f: { objectType: string; objectId: number; category: string; filename: string; mime: string; buffer: Buffer }) {
+  if (!ALLOWED.test(f.mime)) throw new BadRequestException('Format non accepté : PDF, image, Word, Excel ou CSV');
+  if (f.buffer.length > MAX) throw new BadRequestException('Fichier trop volumineux (20 Mo au plus)');
+  const sha256 = createHash('sha256').update(f.buffer).digest('hex');
+  const key = `${ctx.user.entityId}/${new Date().toISOString().slice(0, 7)}/${randomUUID()}`;
+  const full = path.join(STORAGE, key);
+  mkdirSync(path.dirname(full), { recursive: true });
+  writeFileSync(full, f.buffer, { flag: 'wx' });
+  const [d] = await tx.insert(documents).values({ entityId: ctx.user.entityId, objectType: f.objectType, objectId: f.objectId, category: f.category, filename: f.filename, mime: f.mime,
+    size: f.buffer.length, sha256, storageKey: key, uploadedBy: ctx.user.id }).returning();
+  await audit.log(tx, ctx, 'DOCUMENT', f.objectType, `${f.objectType}-${f.objectId}`, { fichier: d.filename, empreinte: sha256, categorie: f.category });
+  return d;
+}
 
 /** Gestion électronique des documents : pièces justificatives rattachées aux objets métier, avec empreinte d'intégrité. */
 @Controller('documents')
@@ -39,17 +54,7 @@ export class DocumentsController {
     const b = parse(z.object({ objectType: z.enum(OBJECTS), objectId: zId, category: z.enum(Object.keys(DOC_CATEGORIES) as [string, ...string[]]) }), body);
     if (!file) throw new BadRequestException('Aucun fichier reçu');
     if (!ALLOWED.test(file.mimetype)) throw new BadRequestException('Format non accepté : PDF, image, Word, Excel ou CSV');
-    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
-    const key = `${ctx.user.entityId}/${new Date().toISOString().slice(0, 7)}/${randomUUID()}`;
-    const full = path.join(STORAGE, key);
-    mkdirSync(path.dirname(full), { recursive: true });
-    writeFileSync(full, file.buffer, { flag: 'wx' });
-    return this.db.transaction(async (tx) => {
-      const [d] = await tx.insert(documents).values({ entityId: ctx.user.entityId, ...b, filename: Buffer.from(file.originalname, 'latin1').toString('utf8'), mime: file.mimetype,
-        size: file.size, sha256, storageKey: key, uploadedBy: ctx.user.id }).returning();
-      await this.audit.log(tx, ctx, 'DOCUMENT', b.objectType, `${b.objectType}-${b.objectId}`, { fichier: d.filename, empreinte: sha256, categorie: b.category });
-      return d;
-    });
+    return this.db.transaction((tx) => storeDocument(tx, this.audit, ctx, { ...b, filename: Buffer.from(file.originalname, 'latin1').toString('utf8'), mime: file.mimetype, buffer: file.buffer }));
   }
 
   /** Téléchargement ; l'empreinte est recontrôlée pour garantir que le fichier n'a pas été altéré. */

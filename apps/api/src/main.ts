@@ -1,10 +1,14 @@
 import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 export async function createApp() {
-  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: ['error', 'warn', 'log'], bodyParser: false });
+  // Lots de synchronisation mobile et signatures : corps JSON jusqu'à 5 Mo.
+  app.useBodyParser('json', { limit: '5mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '1mb' });
   app.setGlobalPrefix('api');
   app.enableCors({ origin: process.env.CORS_ORIGIN?.split(',') ?? true });
   app.enableShutdownHooks();
