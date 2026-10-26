@@ -109,7 +109,8 @@ export class RevaluationController implements OnModuleInit {
       if (!r) throw new NotFoundException('Opération introuvable');
       if (!['BROUILLON', 'REJETE'].includes(r.status)) throw new BadRequestException('Opération déjà soumise');
       await tx.update(revaluations).set({ status: 'EN_COURS' }).where(eq(revaluations.id, r.id));
-      await this.wf.start(tx, ctx.user.entityId, 'REVISION', r.id, [{ label: 'Analyse de la direction financière', role: 'FINANCES', days: 5 }, { label: 'Validation du directeur du patrimoine', role: 'DIRECTEUR', days: 5 }]);
+      const items = await tx.select({ amount: revaluationItems.amount }).from(revaluationItems).where(eq(revaluationItems.revaluationId, r.id));
+      await this.wf.submit(tx, ctx.user.entityId, 'REVISION', r.kind, r.id, { amount: items.reduce((s, i) => s + i.amount, 0), requesterId: r.createdBy });
       await this.audit.log(tx, ctx, 'SOUMISSION', 'REVISION', r.number, {});
       return { ok: true };
     });

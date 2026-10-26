@@ -304,4 +304,28 @@ export async function seedLot2(app: INestApplicationContext, db: DB, pool: Pool,
   await up(U.yao, 'CONTRAT', c1.id, 'CONTRAT', 'Contrat-Dell-ProSupport.pdf', 'Contrat de support Dell ProSupport Plus', ['Durée : 3 ans à compter du 01/07/2026', 'Délai d\'intervention : 4 heures']);
   await up(U.yao, 'BIEN', crashed.a.id, 'EXPERTISE', 'Rapport-expertise-sinistre.pdf', 'Rapport d\'expertise automobile', ['Véhicule ' + crashed.plate, 'Dommages : aile avant droite, optique', 'Valeur de marché estimée après sinistre']);
   log('GED : pièces justificatives déposées');
+
+  // ---------- Paramétrage avancé : circuit personnalisé et états enregistrés ----------
+  const { CircuitsController } = await import('../modules/workflow/circuits.controller');
+  const { ReportBuilderController } = await import('../modules/report-builder/report-builder.controller');
+  const circuits = app.get(CircuitsController), reports = app.get(ReportBuilderController);
+  await circuits.save(ctx(U.konan), 'RECEPTION', 'TOUS', { active: true, steps: [
+    { label: 'Visa du comptable-matières', assignee: 'ROLE', role: 'COMPTABLE_MATIERES', days: 3 },
+    { label: 'Visa du directeur du patrimoine (plus de 25 M)', assignee: 'ROLE', role: 'DIRECTEUR', days: 3, minAmount: 25_000_000 },
+    { label: 'Visa du contrôle budgétaire (plus de 100 M)', assignee: 'ROLE', role: 'FINANCES', days: 5, minAmount: 100_000_000 },
+  ] });
+  const saved: [User, string, string, Record<string, unknown>][] = [
+    [U.konan, 'Patrimoine par catégorie', 'Valeur d\'origine et VNC des biens présents, par catégorie.', { source: 'biens', columns: ['categorie'], groupBy: ['categorie'],
+      aggregates: [{ fn: 'count' }, { fn: 'sum', field: 'valeur_origine' }, { fn: 'sum', field: 'vnc' }], filters: [{ field: 'statut', op: 'nin', value: ['SORTI'] }], sort: { key: 'agg_1', dir: 'desc' } }],
+    [U.yao, 'Biens de plus de 1 M sans détenteur', 'Biens de valeur en service non affectés nominativement : à régulariser.', { source: 'biens', columns: ['code', 'designation', 'categorie', 'site', 'service', 'valeur_origine', 'vnc'],
+      filters: [{ field: 'statut', op: 'eq', value: 'EN_SERVICE' }, { field: 'detenteur', op: 'empty' }, { field: 'valeur_origine', op: 'gt', value: 1_000_000 }], groupBy: [], aggregates: [], sort: { key: 'valeur_origine', dir: 'desc' } }],
+    [U.yao, 'Coût de maintenance par catégorie', 'Interventions terminées : nombre, coût total et durée moyenne.', { source: 'maintenance', columns: ['categorie'], groupBy: ['categorie'],
+      aggregates: [{ fn: 'count' }, { fn: 'sum', field: 'cout' }, { fn: 'avg', field: 'duree_jours' }], filters: [{ field: 'statut', op: 'eq', value: 'TERMINE' }], sort: { key: 'agg_1', dir: 'desc' } }],
+    [U.yao, 'Carburant par véhicule (6 derniers mois)', 'Litres et dépenses par immatriculation.', { source: 'carburant', columns: ['immatriculation'], groupBy: ['immatriculation', 'vehicule'],
+      aggregates: [{ fn: 'sum', field: 'litres' }, { fn: 'sum', field: 'montant' }], filters: [{ field: 'date', op: 'last_days', value: 183 }], sort: { key: 'agg_1', dir: 'desc' }, limit: 20 }],
+    [U.coulibaly, 'Écritures par compte et origine', 'Débits et crédits transmis à la comptabilité générale.', { source: 'ecritures', columns: ['compte'], groupBy: ['compte', 'origine'],
+      aggregates: [{ fn: 'sum', field: 'debit' }, { fn: 'sum', field: 'credit' }], filters: [{ field: 'date', op: 'year', value: '2026' }], sort: { key: 'compte', dir: 'asc' } }],
+  ];
+  for (const [who, name, description, definition] of saved) await reports.create(ctx(who), { name, description, shared: true, definition });
+  log('Paramétrage : circuit de réception personnalisé, 5 états partagés');
 }

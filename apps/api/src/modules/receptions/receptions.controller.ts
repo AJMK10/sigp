@@ -8,7 +8,7 @@ import { CurrentCtx, Ctx, Perm } from '../../common/context';
 import { AuditService } from '../../common/audit.service';
 import { NumberingService } from '../../common/numbering.service';
 import { parse, z, zDate, zId, zMoney } from '../../common/validation';
-import { StepDef, WorkflowService } from '../workflow/workflow.service';
+import { WorkflowService } from '../workflow/workflow.service';
 import { groupBy, JournalService } from '../journal/journal.service';
 
 const lineSchema = z.object({
@@ -114,9 +114,7 @@ export class ReceptionsController implements OnModuleInit {
       if (!lines.some((l) => l.qtyAccepted > 0)) throw new BadRequestException('Aucun article conforme : rien à faire entrer au patrimoine');
       const total = lines.reduce((s, l) => s + l.qtyAccepted * l.unitValue, 0);
       await tx.update(receptions).set({ status: 'A_VALIDER' }).where(eq(receptions.id, r.id));
-      const steps: StepDef[] = [{ label: 'Visa du comptable-matières', role: 'COMPTABLE_MATIERES' }];
-      if (total >= 50_000_000) steps.push({ label: 'Visa du directeur du patrimoine (plus de 50 M)', role: 'DIRECTEUR' });
-      await this.wf.start(tx, ctx.user.entityId, 'RECEPTION', r.id, steps);
+      await this.wf.submit(tx, ctx.user.entityId, 'RECEPTION', 'TOUS', r.id, { amount: total, requesterId: r.createdBy });
       await this.audit.log(tx, ctx, 'SOUMISSION', 'RECEPTION', r.number, { montant: total });
       return { ok: true };
     });

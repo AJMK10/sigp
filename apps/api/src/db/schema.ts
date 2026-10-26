@@ -156,6 +156,7 @@ export const approvals = pgTable('approvals', {
   decidedBy: integer('decided_by').references(() => users.id),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   comment: text('comment'),
+  days: integer('days').notNull().default(3), // délai de traitement de l'étape (jours)
   dueAt: timestamp('due_at', { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => ({ obj: index('approvals_obj_idx').on(t.objectType, t.objectId) }));
@@ -669,3 +670,43 @@ export const documents = pgTable('documents', {
   uploadedBy: integer('uploaded_by').notNull().references(() => users.id),
   uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ obj: index('documents_obj_idx').on(t.objectType, t.objectId) }));
+
+// ---------------------------------------------------------------- Paramétrage avancé
+
+/** Circuit de validation paramétré par l'entité ; à défaut, le circuit réglementaire intégré s'applique. */
+export const workflowCircuits = pgTable('workflow_circuits', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  type: varchar('type', { length: 20 }).notNull(), // RECEPTION, MOUVEMENT, REFORME, REVISION
+  variant: varchar('variant', { length: 30 }).notNull().default('TOUS'), // ex. AFFECTATION, TRANSFERT…
+  active: boolean('active').notNull().default(true),
+  version: integer('version').notNull().default(1),
+  updatedBy: integer('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: uniqueIndex('workflow_circuits_uq').on(t.entityId, t.type, t.variant) }));
+
+export const workflowCircuitSteps = pgTable('workflow_circuit_steps', {
+  id: serial('id').primaryKey(),
+  circuitId: integer('circuit_id').notNull().references(() => workflowCircuits.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  label: text('label').notNull(),
+  assignee: varchar('assignee', { length: 12 }).notNull(), // ROLE, USER, BENEFICIAIRE
+  role: roleCode('role'),
+  userId: integer('user_id').references(() => users.id),
+  days: integer('days').notNull().default(3),
+  minAmount: money('min_amount'), // étape requise seulement au-delà de ce montant
+});
+
+/** États personnalisés : définition (source, colonnes, filtres, regroupements) enregistrée et partageable. */
+export const reportDefinitions = pgTable('report_definitions', {
+  id: serial('id').primaryKey(),
+  entityId: integer('entity_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  source: varchar('source', { length: 30 }).notNull(),
+  definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
+  shared: boolean('shared').notNull().default(false),
+  createdBy: integer('created_by').notNull().references(() => users.id),
+  createdAt: createdAt(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

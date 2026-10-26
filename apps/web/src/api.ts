@@ -47,3 +47,13 @@ export async function upload<T = unknown>(path: string, form: FormData): Promise
   if (!res.ok) { let m = `Erreur ${res.status}`; try { const j = await res.json(); m = Array.isArray(j.message) ? j.message.join(' ; ') : j.message ?? m; } catch { /* */ } throw new ApiError(res.status, m); }
   return res.json() as Promise<T>;
 }
+
+/** Téléchargement d'un fichier produit à partir d'une définition envoyée en corps de requête. */
+export async function downloadPost(path: string, body: unknown, filename: string, open = false) {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token.get() ?? ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) { let m = `Erreur ${res.status}`; try { const j = await res.json(); m = Array.isArray(j.message) ? j.message.join(' ; ') : j.message ?? m; } catch { /* */ } throw new ApiError(res.status, m); }
+  const url = URL.createObjectURL(await res.blob());
+  if (open) window.open(url, '_blank');
+  else { const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

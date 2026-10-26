@@ -20,6 +20,8 @@ import { Demandes, Portail } from './pages/Portail';
 import { ImmoFiche, Immobilier } from './pages/Immobilier';
 import { Flotte, Missions, Vehicule } from './pages/Flotte';
 import { ContratDetail, Contrats, Maintenance, OtDetail } from './pages/Maintenance';
+import { Circuits } from './pages/Circuits';
+import { RapportEditeur, Rapports } from './pages/Rapports';
 import { Cloture, ComptaMatieres, Ged, NouvelleRevision, Renouvellement, RevisionDetail, Revisions } from './pages/Pilotage2';
 
 function Guard({ perms, children }: { perms: string[]; children: ReactNode }) {
@@ -85,6 +87,10 @@ export function App() {
         <Route path="/comptabilite-matieres" element={<Guard perms={['reports.read']}><ComptaMatieres /></Guard>} />
         <Route path="/renouvellement" element={<Guard perms={['reports.read', 'depreciation.read']}><Renouvellement /></Guard>} />
         <Route path="/documents" element={<Guard perms={['documents.write', 'audit.read']}><Ged /></Guard>} />
+        <Route path="/parametrage/circuits" element={<Guard perms={['settings.manage']}><Circuits /></Guard>} />
+        <Route path="/rapports" element={<Guard perms={['reports.read']}><Rapports /></Guard>} />
+        <Route path="/rapports/nouveau" element={<Guard perms={['reports.read']}><RapportEditeur /></Guard>} />
+        <Route path="/rapports/:id" element={<Guard perms={['reports.read']}><RapportEditeur /></Guard>} />
         <Route path="*" element={<div className="note warn">Page introuvable.</div>} />
       </Routes>
     </Layout>

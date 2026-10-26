@@ -43,7 +43,7 @@ export const JOURNAL_STATUS: Record<string, [string, Tone]> = { A_ENVOYER: ['À 
 export const STEP_STATUS: Record<string, [string, Tone]> = { ATTENTE: ['À venir', 'grey'], EN_COURS: ['En cours', 'warn'], APPROUVE: ['Validé', 'ok'], REJETE: ['Rejeté', 'bad'], ANNULE: ['Annulé', 'grey'] };
 export const REQUEST_STATUS: Record<string, [string, Tone]> = { OUVERTE: ['Ouverte', 'warn'], EN_COURS: ['En cours', 'info'], TRAITEE: ['Traitée', 'ok'], REJETEE: ['Rejetée', 'bad'] };
 export const ACTION_LABELS: Record<string, string> = {
-  CONNEXION: 'Connexion', CONNEXION_ECHEC: 'Échec de connexion', CREATION: 'Création', MODIFICATION: 'Modification', SOUMISSION: 'Soumission', VALIDATION: 'Validation', REJET: 'Rejet',
+  PARAMETRAGE: 'Paramétrage', SUPPRESSION: 'Suppression', CONNEXION: 'Connexion', CONNEXION_ECHEC: 'Échec de connexion', CREATION: 'Création', MODIFICATION: 'Modification', SOUMISSION: 'Soumission', VALIDATION: 'Validation', REJET: 'Rejet',
   EXECUTION: 'Exécution', IMMATRICULATION: 'Immatriculation', ETIQUETTE: 'Étiquetage', DOTATION_DEFINITIVE: 'Dotations comptabilisées', DOTATION_SIMULATION: 'Simulation de dotations',
   ANNULATION_DOTATION: 'Annulation de dotations', CLOTURE_PERIODE: 'Clôture de période', ECRITURE: 'Écriture générée', ACCUSE_ERP: 'Accusé ERP', SORTIE: 'Sortie du patrimoine',
   LANCEMENT: "Lancement d'inventaire", RAPPROCHEMENT: "Rapprochement d'inventaire", DECISION_ECART: "Décision sur écart", CLOTURE: 'Clôture', CLOTURE_ZONE: 'Clôture de zone',

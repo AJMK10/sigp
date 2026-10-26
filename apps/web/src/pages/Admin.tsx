@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, download, patch, post } from '../api';
@@ -18,7 +19,8 @@ export function Etats() {
   );
   return (
     <>
-      <PageHead title="États et rapports" sub="États réglementaires et de gestion, produits à une date d'arrêté et exportables. Chaque génération est tracée." />
+      <PageHead title="États et rapports" sub="États réglementaires et de gestion, produits à une date d'arrêté et exportables. Chaque génération est tracée."
+        actions={<Link to="/rapports" className="btn primary">États personnalisés</Link>} />
       <Card title="Filtres communs">
         <div className="grid" style={{ ['--min' as string]: '200px' }}>
           <Field label="Date d'arrêté" htmlFor="d"><input id="d" type="date" className="input" value={d} max={today()} onChange={(e) => setD(e.target.value)} /></Field>
@@ -46,7 +48,7 @@ export function Etats() {
 }
 
 /* ---------------- Paramétrage ---------------- */
-const PARAM: [string, string][] = [['/parametrage', 'Nomenclature'], ['/parametrage/structures', 'Structure et localisations']];
+export const PARAM: [string, string][] = [['/parametrage', 'Nomenclature'], ['/parametrage/structures', 'Structure et localisations'], ['/parametrage/circuits', 'Circuits de validation']];
 export function Parametrage() {
   const cats = useCategories();
   const [edit, setEdit] = useState<Row | null>(null);

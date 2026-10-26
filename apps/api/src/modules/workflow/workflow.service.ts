@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
 import { DB, Tx } from '../../db/client';
-import { approvals, users } from '../../db/schema';
+import { approvals, users, workflowCircuits, workflowCircuitSteps } from '../../db/schema';
+import { CIRCUIT_TYPES, StepModel, variantOf } from './circuits';
 import { InjectDb } from '../../common/db.module';
 import { AuditService } from '../../common/audit.service';
 import { NotifyService } from '../../common/notify.service';
@@ -30,12 +31,46 @@ export class WorkflowService {
     return h;
   }
 
+  /** Modèle applicable : circuit paramétré et actif de l'entité, sinon circuit réglementaire intégré. */
+  async model(tx: Tx, entityId: number, type: string, variant: string): Promise<{ configured: boolean; version: number; steps: StepModel[] }> {
+    const v = variantOf(type, variant);
+    const [c] = await tx.select().from(workflowCircuits).where(and(eq(workflowCircuits.entityId, entityId), eq(workflowCircuits.type, type), eq(workflowCircuits.variant, v)));
+    if (c?.active) {
+      const steps = await tx.select().from(workflowCircuitSteps).where(eq(workflowCircuitSteps.circuitId, c.id)).orderBy(asc(workflowCircuitSteps.position));
+      if (steps.length) return { configured: true, version: c.version, steps: steps.map((s) => ({ label: s.label, assignee: s.assignee as StepModel['assignee'], role: s.role, userId: s.userId, days: s.days, minAmount: s.minAmount })) };
+    }
+    return { configured: false, version: 0, steps: CIRCUIT_TYPES[type].defaults[v] };
+  }
+
+  /** Étapes effectives d'une pièce : conditions de montant appliquées, bénéficiaire résolu. */
+  resolve(models: StepModel[], c: { amount?: number; beneficiaryId?: number | null; requesterId?: number }): StepDef[] {
+    const out: StepDef[] = [];
+    for (const m of models) {
+      if (m.minAmount != null && (c.amount ?? 0) <= m.minAmount) continue;
+      if (m.assignee === 'BENEFICIAIRE') { if (c.beneficiaryId) out.push({ label: m.label, userId: c.beneficiaryId, days: m.days }); continue; }
+      if (m.assignee === 'USER') {
+        if (m.userId === c.requesterId) throw new BadRequestException(`Séparation des tâches : l'étape « ${m.label} » désigne l'auteur de la pièce ; faites corriger le circuit par l'administrateur`);
+        out.push({ label: m.label, userId: m.userId!, days: m.days });
+      } else out.push({ label: m.label, role: m.role!, days: m.days });
+    }
+    if (!out.length) throw new BadRequestException('Le circuit de validation applicable ne comporte aucune étape pour cette pièce');
+    return out;
+  }
+
+  /** Lance le circuit paramétré (ou intégré) d'une pièce. */
+  async submit(tx: Tx, entityId: number, type: string, variant: string, id: number, c: { amount?: number; beneficiaryId?: number | null; requesterId: number }) {
+    const m = await this.model(tx, entityId, type, variant);
+    const steps = this.resolve(m.steps, c);
+    await this.start(tx, entityId, type, id, steps);
+    return steps;
+  }
+
   async start(tx: Tx, entityId: number, type: string, id: number, steps: StepDef[]) {
     if (!steps.length) throw new Error('Circuit vide');
     const now = Date.now();
     await tx.insert(approvals).values(steps.map((s, i) => ({
       entityId, objectType: type, objectId: id, step: i + 1, label: s.label, role: s.role ?? null, userId: s.userId ?? null,
-      status: i === 0 ? 'EN_COURS' : 'ATTENTE', dueAt: i === 0 ? new Date(now + (s.days ?? 3) * 86400000) : null,
+      status: i === 0 ? 'EN_COURS' : 'ATTENTE', days: s.days ?? 3, dueAt: i === 0 ? new Date(now + (s.days ?? 3) * 86400000) : null,
     })));
     await this.notifyStep(tx, entityId, type, id, steps[0]);
   }
@@ -104,7 +139,7 @@ export class WorkflowService {
       if (h.onStepApproved) await h.onStepApproved(tx, ctx, a.objectId, a.step);
       const [next] = await tx.select().from(approvals).where(and(eq(approvals.objectType, a.objectType), eq(approvals.objectId, a.objectId), eq(approvals.step, a.step + 1)));
       if (next) {
-        await tx.update(approvals).set({ status: 'EN_COURS', dueAt: new Date(Date.now() + 3 * 86400000) }).where(eq(approvals.id, next.id));
+        await tx.update(approvals).set({ status: 'EN_COURS', dueAt: new Date(Date.now() + next.days * 86400000) }).where(eq(approvals.id, next.id));
         await this.notifyStep(tx, a.entityId, a.objectType, a.objectId, next);
         return { status: 'EN_COURS', nextStep: next.label };
       }

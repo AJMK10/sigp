@@ -27,7 +27,7 @@ Pour un environnement réel, lancez avec `SEED_DEMO=0` et un `JWT_SECRET` fort.
 | diallo.f@sigp.ci | Contrôleur financier | Avis du contrôle financier, journal d'audit |
 | bamba.s@sigp.ci | Chef d'équipe d'inventaire | Comptage à l'aveugle d'une zone |
 | traore.m@sigp.ci | Détenteur | Portail : mes biens, demandes, attestation de détention ; demande de véhicule (ordre de mission) |
-| admin@sigp.ci | Administrateur | Paramétrage, utilisateurs et droits |
+| admin@sigp.ci | Administrateur | Paramétrage, circuits de validation (réception déjà personnalisée), utilisateurs et droits |
 
 ## Développement local
 
@@ -80,6 +80,8 @@ deploy/   images Docker (API, nginx) ; docker-compose.yml à la racine
 | closing | Rapprochement registre / balance de l'ERP, explications d'écarts, contrôle et clôture d'exercice |
 | cmat / renewal | Comptabilité-matières (livre-journal, grand livre, compte de gestion) ; plan pluriannuel de renouvellement |
 | documents | GED : pièces jointes avec empreinte SHA-256, téléchargement contrôlé, vérification d'intégrité |
+| workflow / circuits | Circuits de validation paramétrables par entité (étapes, valideur, délai, seuil de montant), circuits réglementaires intégrés par défaut |
+| report-builder | Générateur d'états : sources en liste blanche, colonnes, filtres, regroupements, totaux ; états enregistrés et partagés ; export Excel, CSV, PDF |
 
 ### Choix techniques notables
 
@@ -100,7 +102,10 @@ Lot 2 livré : immobilier et foncier, parc automobile et ordres de mission, main
 et dépréciations, rapprochement comptable et clôture d'exercice assistée (une pièce datée d'un exercice clôturé
 est refusée), comptabilité-matières, plan de renouvellement, gestion électronique des documents.
 
-Reste à réaliser : application mobile d'inventaire hors ligne (React Native), éditeur de circuits de validation
-paramétrables et générateur d'états personnalisés.
+Paramétrage avancé livré : éditeur de circuits de validation (une modification ne s'applique qu'aux pièces soumises
+ensuite ; au moins une étape systématique est exigée ; un valideur nommé ne peut pas être l'auteur de la pièce) et
+générateur d'états personnalisés (seuls les champs du catalogue sont interrogeables, les droits s'appliquent par source).
+
+Reste à réaliser : application mobile d'inventaire hors ligne (React Native).
 
 Les pièces jointes sont stockées dans `STORAGE_DIR` (par défaut `apps/api/storage`) : prévoyez un volume persistant.

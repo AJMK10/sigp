@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, NotFoundException, OnModule
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { DB, Tx } from '../../db/client';
 import { assertYearOpen } from '../closing/closing.controller';
-import { assetEvents, assets, categories, disposalItems, disposals, movementItems, movements, users } from '../../db/schema';
+import { approvals, assetEvents, assets, categories, disposalItems, disposals, movementItems, movements, users } from '../../db/schema';
 import { InjectDb } from '../../common/db.module';
 import { CurrentCtx, Ctx, Perm } from '../../common/context';
 import { AuditService } from '../../common/audit.service';
@@ -29,7 +29,11 @@ export class DisposalsController implements OnModuleInit {
         const nbv = items.reduce((s, i) => s + i.nbvAtProposal, 0);
         return { number: d.number, title: `Réforme de ${items.length} bien(s) · ${d.title}`, subtitle: `${EXIT_MODES[d.exitMode]} · VNC ${nbv.toLocaleString('fr-FR')} FCFA`, requestedBy: d.createdBy, link: `/reformes/${id}` };
       },
-      onStepApproved: async (tx, _ctx, id, step) => { if (step === 2) await tx.update(disposals).set({ commissionDate: sql`coalesce(${disposals.commissionDate}, ${today()}::date)` }).where(eq(disposals.id, id)); },
+      // La date de commission est relevée à l'étape de commission, quelle que soit sa place dans le circuit paramétré.
+      onStepApproved: async (tx, _ctx, id, step) => {
+        const [a] = await tx.select({ label: approvals.label }).from(approvals).where(and(eq(approvals.objectType, 'REFORME'), eq(approvals.objectId, id), eq(approvals.step, step)));
+        if (/commission/i.test(a?.label ?? '')) await tx.update(disposals).set({ commissionDate: sql`coalesce(${disposals.commissionDate}, ${today()}::date)` }).where(eq(disposals.id, id));
+      },
       onApproved: async (tx, _ctx, id) => { await tx.update(disposals).set({ status: 'APPROUVE' }).where(eq(disposals.id, id)); },
       onRejected: async (tx, ctx, id) => {
         await tx.update(disposals).set({ status: 'REJETE' }).where(eq(disposals.id, id));
@@ -124,11 +128,7 @@ export class DisposalsController implements OnModuleInit {
       await tx.update(assets).set({ status: 'PROPOSE_REFORME', updatedAt: new Date() }).where(inArray(assets.id, list.map((a) => a.id)));
       await tx.insert(assetEvents).values(list.map((a) => ({ assetId: a.id, type: 'REFORME', documentNo: d.number, summary: `Proposé à la réforme (${d.number})`, actorId: ctx.user.id })));
       await tx.update(disposals).set({ status: 'EN_COURS' }).where(eq(disposals.id, d.id));
-      await this.wf.start(tx, ctx.user.entityId, 'REFORME', d.id, [
-        { label: 'Avis du contrôle financier', role: 'CONTROLEUR', days: 5 },
-        { label: 'Commission de réforme', role: 'DIRECTEUR', days: 10 },
-        { label: "Décision de sortie de l'ordonnateur", role: 'FINANCES', days: 5 },
-      ]);
+      await this.wf.submit(tx, ctx.user.entityId, 'REFORME', 'TOUS', d.id, { amount: list.reduce((s, a) => s + valuesAt(a).nbv, 0), requesterId: d.createdBy });
       await this.audit.log(tx, ctx, 'SOUMISSION', 'REFORME', d.number, { biens: list.length });
       return { ok: true };
     });

@@ -7,13 +7,12 @@ import { CurrentCtx, Ctx, Perm } from '../../common/context';
 import { AuditService } from '../../common/audit.service';
 import { NumberingService } from '../../common/numbering.service';
 import { parse, z, zDate, zId } from '../../common/validation';
-import { StepDef, WorkflowService } from '../workflow/workflow.service';
+import { WorkflowService } from '../workflow/workflow.service';
 import { locationPaths } from '../referentials/referentials.controller';
 import { today } from '../assets/assets.util';
 
 export const MOVEMENT_LABELS: Record<string, string> = { AFFECTATION: 'Affectation', TRANSFERT: 'Transfert', PRET: 'Prêt temporaire', RESTITUTION: 'Restitution' };
 const PREFIX: Record<string, string> = { AFFECTATION: 'AFF', TRANSFERT: 'TRF', PRET: 'PRT', RESTITUTION: 'RST' };
-const VISA_DIRECTEUR_SEUIL = 5_000_000;
 
 /** Vérifie qu'aucun bien n'est gelé par une campagne d'inventaire en cours. */
 export async function assertNotFrozen(tx: Tx, entityId: number, assetIds: number[]) {
@@ -93,15 +92,7 @@ export class MovementsController implements OnModuleInit {
         toHolderId: b.toHolderId ?? null, dueDate: b.dueDate ?? null, reason: b.reason ?? null, requestedBy: ctx.user.id }).returning();
       await tx.insert(movementItems).values(list.map((a) => ({ movementId: m.id, assetId: a.id, fromLocationId: a.locationId, fromOrgUnitId: a.orgUnitId, fromHolderId: a.holderId, fromStatus: a.status })));
       const value = list.reduce((s, a) => s + a.acquisitionValue, 0);
-      const steps: StepDef[] = [];
-      if (b.type === 'AFFECTATION') {
-        steps.push({ label: 'Visa du comptable-matières', role: 'COMPTABLE_MATIERES' });
-        if (value > VISA_DIRECTEUR_SEUIL) steps.push({ label: 'Visa du directeur du patrimoine (plus de 5 M)', role: 'DIRECTEUR' });
-        if (b.toHolderId) steps.push({ label: 'Signature de la décharge par le détenteur', userId: b.toHolderId, days: 5 });
-      } else if (b.type === 'TRANSFERT') steps.push({ label: 'Validation du directeur du patrimoine', role: 'DIRECTEUR' });
-      else if (b.type === 'PRET') { steps.push({ label: 'Validation du directeur du patrimoine', role: 'DIRECTEUR' }); steps.push({ label: "Prise en charge par l'emprunteur", userId: b.toHolderId!, days: 5 }); }
-      else steps.push({ label: 'Visa du comptable-matières', role: 'COMPTABLE_MATIERES' });
-      await this.wf.start(tx, ctx.user.entityId, 'MOUVEMENT', m.id, steps);
+      await this.wf.submit(tx, ctx.user.entityId, 'MOUVEMENT', b.type, m.id, { amount: value, beneficiaryId: b.toHolderId ?? null, requesterId: ctx.user.id });
       await tx.insert(assetEvents).values(list.map((a) => ({ assetId: a.id, type: 'MOUVEMENT_DEMANDE', documentNo: number, summary: `${MOVEMENT_LABELS[b.type]} demandé(e) (${number})`, actorId: ctx.user.id })));
       await this.audit.log(tx, ctx, 'CREATION', 'MOUVEMENT', number, { type: b.type, biens: list.map((a) => a.code), valeur: value });
       return m;

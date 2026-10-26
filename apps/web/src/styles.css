@@ -197,3 +197,15 @@ table.t tfoot td { font-weight: 700; background: var(--subtle); border-top: 1px 
 .plate.sm { font-size: 11px; padding: 0 5px; border-width: 1px; }
 .plate.lg { font-size: 16px; padding: 4px 12px; border-width: 2px; }
 .hbars { display: flex; flex-direction: column; gap: 10px; }
+.circuit-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px; border: 1px solid transparent; background: none; font: inherit; font-size: 14px; color: var(--fg); cursor: pointer; }
+.circuit-item:hover { background: var(--subtle); }
+.circuit-item.active { background: var(--accent-soft); border-color: #C9DCF2; font-weight: 600; }
+.circuit-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.circuit-step { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); }
+.circuit-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.circuit-tools { display: flex; flex-direction: column; gap: 6px; }
+.col-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 12px; }
+.col-picker .check { font-size: 13px; }
+.filter-row { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--subtle); }
+.filter-row .input { height: 36px; }
+table.t.nowrap td { white-space: nowrap; }

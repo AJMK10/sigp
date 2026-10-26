@@ -10,7 +10,7 @@ const NAV: [string, Item[]][] = [
     { to: '/', label: 'Tableau de bord', perms: ['dashboard.read'] },
     { to: '/validations', label: 'Validations', badge: 'validations' },
     { to: '/notifications', label: 'Notifications', badge: 'notifications' },
-    { to: '/etats', label: 'États et rapports', perms: ['reports.read'] },
+    { to: '/etats', label: 'États et rapports', perms: ['reports.read'], match: ['rapports'] },
     { to: '/renouvellement', label: 'Plan de renouvellement', perms: ['reports.read', 'depreciation.read'] },
   ]],
   ['Patrimoine', [
@@ -48,7 +48,7 @@ const CRUMBS: Record<string, string> = {
   mouvements: 'Mouvements', inventaires: 'Inventaires', reformes: 'Réformes et sorties', valorisation: 'Valorisation', ecritures: 'Écritures comptables', parametrage: 'Paramétrage',
   utilisateurs: 'Utilisateurs et droits', audit: "Journal d'audit", demandes: 'Demandes des détenteurs', portail: 'Portail détenteur',
   immobilier: 'Immobilier et foncier', flotte: 'Parc automobile', missions: 'Ordres de mission', maintenance: 'Maintenance', contrats: 'Contrats et garanties', revisions: 'Révisions et dépréciations',
-  'comptabilite-matieres': 'Comptabilité-matières', cloture: 'Rapprochement et clôture', renouvellement: 'Plan de renouvellement', documents: 'Documents',
+  'comptabilite-matieres': 'Comptabilité-matières', cloture: 'Rapprochement et clôture', renouvellement: 'Plan de renouvellement', documents: 'Documents', rapports: 'États personnalisés',
 };
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -74,7 +74,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 {visible.map((i) => i.lot2 ? (
                   <span key={i.label} className="nav-link disabled" title="Prévu au lot 2">{i.label}<span className="nav-lot">Lot 2</span></span>
                 ) : (
-                  <NavLink key={i.to} to={i.to} end={i.to === '/'} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                  <NavLink key={i.to} to={i.to} end={i.to === '/'} className={({ isActive }) => `nav-link ${isActive || i.match?.includes(seg) ? 'active' : ''}`}>
                     {i.label}
                     {badge(i.badge) > 0 && <span className={`nav-badge ${i.badge === 'notifications' ? 'blue' : ''}`}>{badge(i.badge)}</span>}
                   </NavLink>

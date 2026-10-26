@@ -25,6 +25,8 @@ async function as(user: string) {
     get: (u: string) => request(s).get(`/api${u}`).set('Authorization', `Bearer ${t}`),
     post: (u: string, b: object = {}) => request(s).post(`/api${u}`).set('Authorization', `Bearer ${t}`).send(b),
     patch: (u: string, b: object) => request(s).patch(`/api${u}`).set('Authorization', `Bearer ${t}`).send(b),
+    put: (u: string, b: object) => request(s).put(`/api${u}`).set('Authorization', `Bearer ${t}`).send(b),
+    del: (u: string) => request(s).delete(`/api${u}`).set('Authorization', `Bearer ${t}`),
   };
 }
 async function decideAll(type: string, id: number) {
@@ -341,5 +343,67 @@ describe('GED, comptabilité-matières et renouvellement', () => {
     expect(p.status).toBe(200);
     expect(p.body.plan).toHaveLength(5);
     for (const y of p.body.plan) expect(y.funded).toBeLessThanOrEqual(500_000_000);
+  });
+});
+
+// ------------------------------------------------------------------ Paramétrage avancé
+describe('circuits de validation paramétrables', () => {
+  it('applique le circuit personnalisé aux nouvelles pièces et revient au circuit intégré', async () => {
+    const admin = await as('admin'), mgr = await as('yao.k');
+    // Le jeu de démonstration paramètre la réception : visa directeur au-delà de 25 M, contrôle budgétaire au-delà de 100 M.
+    const { rows: [c] } = await pool.query(`select id from categories where prefix = 'MOB'`);
+    const make = async (unit: number) => {
+      const r = await mgr.post('/receptions', { entryMode: 'ACHAT', supplier: 'Test circuit', deliveryDate: '2026-10-21', lines: [{ designation: 'Armoire', categoryId: c.id, qtyOrdered: 1, qtyDelivered: 1, qtyAccepted: 1, unitValue: unit }] });
+      expect(r.status).toBe(201);
+      expect((await mgr.post(`/receptions/${r.body.id}/soumettre`)).status).toBe(201);
+      return (await pool.query(`select label, role, days from approvals where object_type = 'RECEPTION' and object_id = $1 order by step`, [r.body.id])).rows;
+    };
+    expect((await make(30_000_000)).map((x) => x.role)).toEqual(['COMPTABLE_MATIERES', 'DIRECTEUR']);
+    const big = await make(120_000_000);
+    expect(big.map((x) => x.role)).toEqual(['COMPTABLE_MATIERES', 'DIRECTEUR', 'FINANCES']);
+    expect(big[2].days).toBe(5);
+    expect((await admin.del('/circuits/RECEPTION/TOUS')).status).toBe(200);
+    expect((await make(30_000_000)).map((x) => x.role)).toEqual(['COMPTABLE_MATIERES']); // circuit intégré : directeur au-delà de 50 M
+  });
+  it('refuse un circuit sans contrôle systématique et un valideur nommé qui serait aussi l\'auteur', async () => {
+    const admin = await as('admin');
+    expect((await admin.put('/circuits/REFORME/TOUS', { steps: [{ label: 'Commission', assignee: 'ROLE', role: 'DIRECTEUR', days: 5, minAmount: 1_000_000 }] })).status).toBe(400);
+    expect((await (await as('yao.k')).put('/circuits/REFORME/TOUS', { steps: [{ label: 'Commission', assignee: 'ROLE', role: 'DIRECTEUR', days: 5 }] })).status).toBe(403);
+    const { rows: [yao] } = await pool.query(`select id from users where email = 'yao.k@sigp.ci'`);
+    expect((await admin.put('/circuits/MOUVEMENT/TRANSFERT', { steps: [{ label: 'Visa du gestionnaire', assignee: 'USER', userId: yao.id, days: 2 }] })).status).toBe(200);
+    const { rows: [a] } = await pool.query(`select id from assets where status = 'EN_SERVICE' and category_id in (select id from categories where prefix = 'MOB')
+      and not exists (select 1 from movement_items mi join movements m on m.id = mi.movement_id where mi.asset_id = assets.id and m.status in ('A_VALIDER','EN_TRANSIT')) limit 1`);
+    const { rows: [loc] } = await pool.query(`select id from locations where kind = 'LOCAL' limit 1`);
+    const r = await (await as('yao.k')).post('/mouvements', { type: 'TRANSFERT', assetIds: [a.id], toLocationId: loc.id, reason: 'Test séparation des tâches' });
+    expect(r.status).toBe(400);
+    expect(r.body.message).toMatch(/Séparation des tâches/);
+    const sim = await admin.post('/circuits/MOUVEMENT/AFFECTATION/simuler', { amount: 6_000_000, beneficiary: false });
+    expect(sim.body.steps.map((s: { label: string }) => s.label)).toEqual(['Visa du comptable-matières', 'Visa du directeur du patrimoine (plus de 5 M)']);
+    await admin.del('/circuits/MOUVEMENT/TRANSFERT');
+  });
+});
+
+describe("générateur d'états", () => {
+  it('regroupe, calcule les valeurs comptables et exporte', async () => {
+    const k = await as('konan.a');
+    const r = await k.post('/rapports/executer', { definition: { source: 'biens', columns: ['categorie'], groupBy: ['statut'], aggregates: [{ fn: 'count' }, { fn: 'sum', field: 'vnc' }] } });
+    expect(r.status).toBe(201);
+    const { rows: [n] } = await pool.query(`select count(*)::int n from assets`);
+    expect(r.body.totals.agg_0).toBe(n.n);
+    const f = await k.post('/rapports/executer', { definition: { source: 'biens', columns: ['code', 'vnc', 'vetuste'], filters: [{ field: 'vetuste', op: 'gte', value: 100 }, { field: 'statut', op: 'eq', value: 'EN_SERVICE' }] } });
+    expect(f.body.rows.every((x: { vetuste: number }) => x.vetuste >= 1)).toBe(true);
+    const saved = await k.post('/rapports', { name: 'Test état', shared: false, definition: { source: 'maintenance', columns: ['numero', 'cout'], filters: [{ field: 'statut', op: 'in', value: ['TERMINE', 'EN_COURS'] }] } });
+    expect(saved.status).toBe(201);
+    expect((await (await as('yao.k')).get(`/rapports/${saved.body.id}`)).status).toBe(404); // non partagé
+    for (const fmt of ['xlsx', 'csv', 'pdf']) expect((await k.get(`/rapports/${saved.body.id}/export?format=${fmt}`)).status).toBe(200);
+  });
+  it('n\'interroge que les champs du catalogue et respecte les droits par source', async () => {
+    const y = await as('yao.k');
+    expect((await y.post('/rapports/executer', { definition: { source: 'biens', columns: ['password_hash'] } })).status).toBe(400);
+    expect((await y.post('/rapports/executer', { definition: { source: 'ecritures', columns: ['compte'] } })).status).toBe(403);
+    const inj = await y.post('/rapports/executer', { definition: { source: 'biens', columns: ['code'], filters: [{ field: 'designation', op: 'contains', value: "x'; DROP TABLE assets; --" }] } });
+    expect(inj.status).toBe(201);
+    expect((await pool.query('select count(*)::int n from assets')).rows[0].n).toBeGreaterThan(0);
+    expect((await (await as('traore.m')).get('/rapports/sources')).status).toBe(403);
   });
 });
